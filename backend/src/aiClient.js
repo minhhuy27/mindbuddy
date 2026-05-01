@@ -16,15 +16,21 @@ function stripThinking(text) {
   return (text || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 }
 
-// Xóa Markdown formatting (**, *, ##, ###, v.v.) từ response Gemini
+// Xóa Markdown formatting — áp dụng cho cả Groq lẫn Gemini
 function stripMarkdown(text) {
-  return (text || '')
-    .replace(/\*\*([^*\n]+)\*\*/g, '$1') // **bold** → bold (không cross line)
-    .replace(/\*([^*\n]+)\*/g, '$1')      // *italic* → italic
-    .replace(/^#{1,6} /gm, '')            // ### heading → bỏ dấu #
-    .replace(/`{1,3}[^`\n]*`{1,3}/g, '') // `code` → xóa
-    .replace(/[ \t]+\n/g, '\n')           // xóa trailing space trước newline
-    .replace(/\n{3,}/g, '\n\n')           // gộp nhiều dòng trống
+  if (!text) return '';
+  // Xử lý **bold**: split theo '**', các phần lẻ (index 1,3,5...) là nội dung bold → giữ lại
+  const parts = text.split('**');
+  let result = parts.join(''); // bỏ tất cả dấu **
+
+  // Xử lý *italic* (single star, không phải **)
+  result = result.replace(/(?<!\*)\*(?!\*)([^*\n]+?)(?<!\*)\*(?!\*)/g, '$1');
+
+  return result
+    .replace(/^#{1,6}\s+/gm, '')   // xóa heading ##
+    .replace(/`[^`]+`/g, '')        // xóa inline code
+    .replace(/[ \t]+\n/g, '\n')     // trailing spaces
+    .replace(/\n{3,}/g, '\n\n')     // dòng trống thừa
     .trim();
 }
 
