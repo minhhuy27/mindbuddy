@@ -1,0 +1,66 @@
+.dashboard { display: flex; flex-direction: column; gap: 24px; }
+
+.welcome-banner {
+  background: var(--welcome-gradient);
+  color: white; border-radius: 20px; padding: 28px 32px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  transition: background 0.3s;
+}
+.welcome-banner h1 { color: white; }
+.welcome-banner .text-muted { color: rgba(255,255,255,0.8); }
+.welcome-banner .btn-primary { background: var(--card); color: var(--primary); }
+
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.stat-card {
+  background: var(--card); border-radius: 16px; padding: 20px;
+  text-align: center; box-shadow: var(--shadow); border: 1px solid var(--border);
+}
+.stat-icon { font-size: 28px; margin-bottom: 8px; }
+.stat-value { font-size: 28px; font-weight: 700; color: var(--primary); }
+.stat-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+.badges-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.badge-item {
+  padding: 10px; border-radius: 12px; border: 1.5px solid var(--border);
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px;
+}
+.badge-item.earned { border-color: var(--primary); background: var(--accent-purple); }
+.badge-item.locked { opacity: 0.5; }
+.badge-icon { font-size: 24px; }
+.badge-name { font-size: 11px; font-weight: 600; }
+.badge-desc { font-size: 10px; color: var(--text-muted); }
+
+.quick-actions .actions-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+.action-card {
+  background: var(--card); border-radius: 16px; padding: 20px 12px;
+  text-decoration: none; color: var(--text);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  border: 2px solid transparent; transition: all 0.2s;
+  box-shadow: var(--shadow);
+}
+.action-card:hover { border-color: var(--action-color); transform: translateY(-2px); }
+.action-icon { font-size: 28px; }
+.action-label { font-size: 12px; font-weight: 600; text-align: center; }
+
+.empty-state { text-align: center; color: var(--text-muted); padding: 40px 0; font-size: 14px; }
+
+@media (max-width: 768px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .quick-actions .actions-grid { grid-template-columns: repeat(3, 1fr); }
+  .welcome-banner { flex-direction: column; text-align: center; }
+}
+
+/* ===== DARK MODE ===== */
+[data-theme="dark"] .welcome-banner .btn-primary { background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3); }
+[data-theme="dark"] .welcome-banner .btn-primary:hover { background: rgba(255,255,255,0.25); }
+
+[data-theme="dark"] .stat-card { background: var(--card); border-color: var(--border); color: var(--text); }
+[data-theme="dark"] .stat-label { color: var(--text-muted); }
+
+[data-theme="dark"] .badge-item { background: var(--card); border-color: var(--border); color: var(--text); }
+[data-theme="dark"] .badge-item.earned { background: var(--accent-purple); border-color: var(--primary); }
+[data-theme="dark"] .badge-name { color: var(--text); }
+[data-theme="dark"] .badge-desc { color: var(--text-muted); }
+
+[data-theme="dark"] .action-card { background: var(--card); color: var(--text); border-color: var(--border); }
+[data-theme="dark"] .action-card:hover { border-color: var(--action-color); background: var(--card-hover); }

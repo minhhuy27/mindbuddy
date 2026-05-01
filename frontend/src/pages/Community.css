@@ -1,0 +1,92 @@
+.community-page { display: flex; flex-direction: column; }
+.community-layout { display: grid; grid-template-columns: 1fr 320px; gap: 24px; align-items: start; }
+.main-section { display: flex; flex-direction: column; }
+.side-section { display: flex; flex-direction: column; gap: 16px; }
+
+.view-tabs { display: flex; gap: 8px; }
+.view-tab {
+  flex: 1; padding: 10px; border-radius: 10px; border: none;
+  cursor: pointer; font-size: 14px; font-weight: 600;
+  background: transparent; color: var(--text-muted); transition: all 0.2s;
+}
+.view-tab.active { background: var(--primary); color: white; }
+
+.confession-map { padding: 0; overflow: hidden; border-radius: 16px; }
+.map-area {
+  position: relative;
+  height: 400px;
+  min-height: 300px;
+  background: var(--map-gradient);
+  overflow: hidden;
+  transition: background 0.3s;
+}
+
+.map-pin {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  /* Giới hạn pin không bị tràn ra ngoài map */
+  max-width: 200px;
+  z-index: 1;
+}
+.map-pin:hover { z-index: 10; }
+.pin-bubble {
+  background: var(--card); border-radius: 12px; padding: 10px 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15); max-width: 200px;
+  font-size: 12px; line-height: 1.4; margin-bottom: 4px;
+  border: 1px solid var(--border);
+}
+.pin-bubble p { margin-bottom: 6px; }
+.pin-actions { display: flex; align-items: center; justify-content: space-between; }
+.pin-dot { width: 10px; height: 10px; background: var(--primary); border-radius: 50%; margin: 0 auto; }
+.pin-time { font-size: 10px; color: var(--text-muted); }
+
+.hug-btn {
+  background: var(--accent-pink); border: 1px solid #fd79a8; border-radius: 20px;
+  padding: 3px 8px; font-size: 11px; cursor: pointer; transition: all 0.2s;
+}
+.hug-btn:hover { background: #fd79a8; color: white; }
+
+.confession-list { display: flex; flex-direction: column; gap: 12px; }
+.confession-card { padding: 16px; }
+.confession-text { font-size: 15px; line-height: 1.6; margin-bottom: 12px; }
+.confession-footer { display: flex; align-items: center; justify-content: space-between; }
+.hug-btn-lg {
+  background: var(--accent-pink); border: 1.5px solid #fd79a8; border-radius: 20px;
+  padding: 6px 16px; font-size: 13px; cursor: pointer; font-weight: 600; transition: all 0.2s;
+}
+.hug-btn-lg:hover { background: #fd79a8; color: white; }
+
+.buddy-card { text-align: center; }
+.buddy-result { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.buddy-avatar { font-size: 48px; }
+.buddy-name { font-size: 18px; font-weight: 700; color: var(--primary); }
+.buddy-challenge { background: var(--bg); border-radius: 12px; padding: 12px; width: 100%; text-align: center; }
+
+.challenge-item { margin-bottom: 16px; }
+.challenge-name { font-size: 14px; font-weight: 500; }
+.progress-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--primary), var(--primary-light)); border-radius: 4px; transition: width 0.3s; }
+
+@media (max-width: 900px) {
+  .community-layout { grid-template-columns: 1fr; }
+  .map-area { height: 320px; }
+  .pin-bubble { max-width: 150px; font-size: 11px; }
+}
+
+/* ===== DARK MODE ===== */
+[data-theme="dark"] .view-tab { color: var(--text-muted); }
+[data-theme="dark"] .view-tab.active { color: white; }
+
+[data-theme="dark"] .pin-bubble { background: var(--card); border-color: var(--border); color: var(--text); }
+[data-theme="dark"] .pin-time { color: var(--text-muted); }
+[data-theme="dark"] .pin-dot { background: var(--primary); }
+
+[data-theme="dark"] .hug-btn { background: var(--accent-pink); border-color: rgba(253,121,168,0.4); color: var(--text); }
+[data-theme="dark"] .hug-btn:hover { background: #fd79a8; color: white; }
+[data-theme="dark"] .hug-btn-lg { background: var(--accent-pink); border-color: rgba(253,121,168,0.4); color: var(--text); }
+[data-theme="dark"] .hug-btn-lg:hover { background: #fd79a8; color: white; }
+
+[data-theme="dark"] .confession-text { color: var(--text); }
+[data-theme="dark"] .buddy-name { color: var(--primary); }
+[data-theme="dark"] .buddy-challenge { background: var(--bg); color: var(--text); }
+[data-theme="dark"] .challenge-name { color: var(--text); }

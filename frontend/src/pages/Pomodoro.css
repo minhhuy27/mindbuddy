@@ -1,0 +1,64 @@
+.pomodoro-page { display: flex; flex-direction: column; }
+
+.pomodoro-layout { display: grid; grid-template-columns: 1fr 380px; gap: 24px; align-items: start; }
+
+.timer-card { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+
+.mode-tabs { display: flex; gap: 8px; background: var(--bg); padding: 4px; border-radius: 12px; }
+.mode-tab {
+  padding: 8px 20px; border-radius: 10px; border: none;
+  cursor: pointer; font-size: 14px; font-weight: 600;
+  background: transparent; color: var(--text-muted); transition: all 0.2s;
+}
+.mode-tab.active { background: var(--card); color: var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+
+.timer-circle { position: relative; width: 240px; height: 240px; }
+.timer-svg { width: 100%; height: 100%; }
+.timer-display {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  text-align: center;
+}
+.timer-time { font-size: 52px; font-weight: 700; color: var(--text); line-height: 1; }
+.timer-mode { font-size: 14px; color: var(--text-muted); margin-top: 4px; }
+
+.timer-controls { display: flex; gap: 12px; align-items: center; }
+.btn-lg { padding: 14px 32px; font-size: 16px; }
+
+.session-count { font-size: 13px; color: var(--text-muted); }
+
+.side-panel { display: flex; flex-direction: column; gap: 16px; }
+
+.setting-row label, .setting-label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 6px; }
+.min-label { font-size: 13px; font-weight: 700; color: var(--primary); min-width: 28px; }
+
+.sound-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.sound-btn {
+  padding: 8px; border-radius: 10px; border: 1.5px solid var(--border);
+  background: var(--card); cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s;
+}
+.sound-btn.active { border-color: var(--primary); background: var(--accent-purple); color: var(--primary); }
+
+.break-tip { text-align: center; background: var(--accent-green); }
+.tip-icon { font-size: 40px; margin: 8px 0; }
+.break-tip h4 { font-size: 16px; }
+
+.content-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.content-item:last-child { border-bottom: none; }
+.content-icon { font-size: 24px; flex-shrink: 0; }
+.content-title { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+
+@media (max-width: 900px) {
+  .pomodoro-layout { grid-template-columns: 1fr; }
+}
+
+[data-theme="dark"] .mode-tab { color: var(--text-muted); }
+[data-theme="dark"] .mode-tab.active { color: var(--primary); background: #2a2a40; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+[data-theme="dark"] .sound-btn { color: var(--text); background: var(--card); border-color: var(--border); }
+[data-theme="dark"] .sound-btn.active { color: var(--primary); background: var(--accent-purple); border-color: var(--primary); }
+
+[data-theme="dark"] .timer-svg circle:first-child { stroke: var(--border); }
+[data-theme="dark"] .break-tip { background: var(--accent-green); color: var(--text); }
+[data-theme="dark"] .break-tip h4 { color: var(--text); }
+[data-theme="dark"] .content-item { border-color: var(--border); }
+[data-theme="dark"] .content-title { color: var(--text); }
+[data-theme="dark"] .session-count { color: var(--text-muted); }

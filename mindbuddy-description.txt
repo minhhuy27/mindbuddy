@@ -1,0 +1,34 @@
+BẢN MÔ TẢ DỰ ÁN: MINDBUDDY – TRỢ LÝ SỨC KHỎE TÂM THẦN CHO SINH VIÊN
+1. Tổng quan dự án
+Tên ứng dụng: MindBuddy
+Slogan: "Cùng bạn vượt qua áp lực, kiến tạo tương lai."
+Mục tiêu: Cung cấp một hệ sinh thái kỹ thuật số giúp sinh viên quản lý căng thẳng (stress), cân bằng giữa việc học và chăm sóc bản thân, từ đó ngăn ngừa các vấn đề tâm lý nghiêm trọng.
+2. Đối tượng mục tiêu (Target Audience)
+Chính: Sinh viên đại học đang gặp áp lực về thi cử, tài chính, định hướng nghề nghiệp hoặc cô đơn khi sống xa nhà.
+Phụ: Các tổ chức giáo dục, câu lạc bộ tâm lý muốn hỗ trợ sức khỏe tinh thần cho sinh viên.
+3. Các tính năng chính (Core Features)
+3.1. Theo dõi và Phân tích cảm xúc (Mood Tracker & Insight)
+Check-in hàng ngày: Giao diện đơn giản để người dùng chọn biểu tượng cảm xúc và ghi chú nhanh nguyên nhân (ví dụ: điểm kém, thiếu ngủ, xung đột bạn bè).
+Biểu đồ xu hướng: Tổng hợp dữ liệu theo tuần/tháng để sinh viên nhận ra các "vòng lặp" cảm xúc của bản thân.
+Phân tích AI: Sử dụng xử lý ngôn ngữ tự nhiên (NLP) để phân tích từ khóa trong nhật ký, đưa ra cảnh báo nếu phát hiện dấu hiệu trầm cảm hoặc lo âu kéo dài.
+3.2. Bộ công cụ Học tập & Thư giãn (Study-Life Balance Tools)
+Smart Pomodoro: Đồng hồ tập trung có tích hợp âm thanh trắng (Lofi, tiếng mưa, sóng não) giúp tăng năng suất học tập.
+Break-time Suggestions: Sau mỗi phiên học, app gợi ý bài tập hít thở 3 phút hoặc bài tập giãn cơ tại chỗ để tránh kiệt sức.
+Kho nội dung chữa lành: Podcast ngắn, các bài viết tâm lý chuyên sâu và thư viện nhạc thiền miễn phí.
+3.3. Kết nối cộng đồng ẩn danh (Healing Community)
+Confession Map: Bản đồ số nơi sinh viên "thả" những tâm tư ẩn danh. Những người dùng khác có thể gửi "Cái ôm" hoặc "Lời chúc" ảo.
+Buddy System: Tính năng ghép cặp ngẫu nhiên để hai người cùng học hoặc cùng thực hiện thử thách sống khỏe trong 21 ngày.
+3.4. Hệ thống hỗ trợ khẩn cấp (Crisis Support)
+Nút "S.O.S Tâm lý": Liên kết nhanh đến các số điện thoại hotline tư vấn tâm lý miễn phí hoặc thông báo cho người thân đã thiết lập sẵn khi người dùng cảm thấy quá tải.
+4. Cơ chế Gamification (Tăng tính tương tác)
+Vườn tâm hồn: Mỗi sinh viên có một hạt giống. Mỗi khi thực hiện thói quen tốt (ngủ sớm, học tập trung, viết nhật ký), cây sẽ lớn lên và nở hoa. Nếu bỏ bê bản thân, cây sẽ héo, nhắc nhở sinh viên quay lại chăm sóc chính mình.
+Huy hiệu: Tặng huy hiệu cho các cột mốc: "Chiến binh bền bỉ", "Bậc thầy thiền định",...
+5. Kiến trúc công nghệ (Technical Stack)
+Mobile App: Flutter hoặc React Native (Tiết kiệm thời gian phát triển cho cả iOS & Android).
+Backend: Node.js hoặc Python (FastAPI/Django).
+Database: Firebase (Lưu trữ thời gian thực, xác thực người dùng) hoặc MongoDB.
+AI Integration: Sử dụng API của OpenAI (GPT) để phân tích cảm xúc hoặc xây dựng Chatbot tư vấn cơ bản.
+6. Lợi thế của dự án (Unique Selling Points)
+Thực tế: Giải quyết đúng nỗi đau của sinh viên (ngân sách thấp, áp lực cao).
+Khả thi: Không phụ thuộc vào thiết bị ngoại vi (IoT), tập trung vào dữ liệu phần mềm.
+Nhân văn: Tạo ra tác động tích cực cho cộng đồng thay vì chỉ là một ứng dụng kỹ thuật thuần túy.

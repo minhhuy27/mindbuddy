@@ -1,0 +1,74 @@
+.sos-page { display: flex; flex-direction: column; gap: 24px; }
+
+.sos-banner {
+  background: var(--sos-gradient);
+  color: white; border-radius: 20px; padding: 28px 32px;
+  transition: background 0.3s;
+}
+.sos-banner h2 { color: white; margin-bottom: 8px; }
+.sos-banner p { color: rgba(255,255,255,0.85); }
+
+.sos-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+.left-col, .right-col { display: flex; flex-direction: column; gap: 16px; }
+
+.hotlines { display: flex; flex-direction: column; gap: 12px; }
+.hotline-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px; border-radius: 12px; background: var(--bg);
+}
+.hotline-icon { font-size: 24px; flex-shrink: 0; }
+.hotline-info { flex: 1; }
+.hotline-name { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+.hotline-number { font-size: 18px; font-weight: 700; color: var(--primary); text-decoration: none; }
+.hotline-number:hover { text-decoration: underline; }
+
+.breathing-card { text-align: center; }
+.breathing-exercise { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+
+.breath-circle {
+  width: 180px; height: 180px; border-radius: 50%;
+  background: color-mix(in srgb, var(--breath-color) 20%, var(--breath-circle-bg));
+  border: 4px solid var(--breath-color);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  animation: breathe 1s ease-in-out infinite alternate;
+}
+
+@keyframes breathe {
+  from { transform: scale(0.95); }
+  to { transform: scale(1.05); }
+}
+
+.breath-label { font-size: 18px; font-weight: 700; }
+.breath-count { font-size: 48px; font-weight: 700; color: var(--primary); line-height: 1; }
+.breath-round { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+.breath-steps { display: flex; gap: 8px; }
+.breath-step {
+  flex: 1; padding: 8px; border-radius: 10px; border: 1.5px solid var(--border);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  font-size: 12px; font-weight: 500;
+}
+.breath-step.active { border-color: var(--primary); background: var(--accent-purple); color: var(--primary); }
+
+.affirmations { display: flex; flex-direction: column; gap: 10px; }
+.affirmation {
+  padding: 12px 16px; border-radius: 12px;
+  background: var(--accent-purple);
+  font-size: 14px; line-height: 1.5; border-left: 3px solid var(--primary);
+}
+
+@media (max-width: 768px) {
+  .sos-layout { grid-template-columns: 1fr; }
+}
+
+/* ===== DARK MODE ===== */
+[data-theme="dark"] .hotline-item { background: var(--bg); color: var(--text); }
+[data-theme="dark"] .hotline-name { color: var(--text); }
+[data-theme="dark"] .hotline-number { color: var(--primary); }
+
+[data-theme="dark"] .breath-step { background: var(--card); border-color: var(--border); color: var(--text); }
+[data-theme="dark"] .breath-step.active { background: var(--accent-purple); border-color: var(--primary); color: var(--primary); }
+[data-theme="dark"] .breath-label { color: var(--text); }
+[data-theme="dark"] .breath-round { color: var(--text-muted); }
+
+[data-theme="dark"] .affirmation { background: var(--accent-purple); color: var(--text); border-color: var(--primary); }

@@ -1,0 +1,81 @@
+.garden-page { display: flex; flex-direction: column; }
+.garden-layout { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; }
+
+.garden-main { display: flex; flex-direction: column; gap: 20px; }
+
+.garden-scene {
+  background: var(--garden-gradient);
+  border-radius: 16px; padding: 20px; min-height: 280px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  position: relative; overflow: hidden;
+  transition: background 0.3s;
+}
+
+.sky { display: flex; gap: 16px; font-size: 24px; }
+.cloud { animation: float 3s ease-in-out infinite; }
+.sun { animation: float 4s ease-in-out infinite reverse; }
+.bird { animation: float 2.5s ease-in-out infinite; }
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.tree-display { text-align: center; }
+.tree-emoji { font-size: 100px; line-height: 1; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2)); }
+.tree-label { font-size: 14px; font-weight: 600; color: white; text-shadow: 0 1px 3px rgba(0,0,0,0.3); margin-top: 8px; }
+
+.ground { display: flex; gap: 12px; font-size: 24px; justify-content: center; }
+
+.health-label { font-size: 14px; font-weight: 600; }
+.health-value { font-size: 18px; font-weight: 700; color: var(--primary); }
+.health-bar { height: 12px; background: var(--border); border-radius: 6px; overflow: hidden; }
+.health-fill {
+  height: 100%; border-radius: 6px;
+  background: linear-gradient(90deg, #55efc4, #00b894);
+  transition: width 0.5s ease;
+}
+
+.habits-list { display: flex; flex-direction: column; gap: 8px; }
+.habit-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border-radius: 12px;
+  border: 1.5px solid var(--border); background: var(--card);
+  cursor: pointer; transition: all 0.2s; text-align: left; width: 100%;
+}
+.habit-item:hover:not(:disabled) { border-color: var(--primary); background: var(--accent-purple); }
+.habit-item.done { background: var(--accent-green); border-color: #55efc4; opacity: 0.8; }
+.habit-icon { font-size: 20px; }
+.habit-label { flex: 1; font-size: 14px; font-weight: 500; }
+.habit-points { font-size: 12px; font-weight: 700; color: var(--primary); }
+.habit-check { font-size: 16px; color: #00b894; font-weight: 700; }
+
+.badges-collection { display: flex; flex-direction: column; gap: 10px; }
+.badge-full {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: 12px; border: 1.5px solid var(--border);
+}
+.badge-full.earned { border-color: var(--primary); background: var(--accent-purple); }
+.badge-full.locked { opacity: 0.5; }
+.badge-big-icon { font-size: 28px; flex-shrink: 0; }
+.badge-full-name { font-size: 13px; font-weight: 600; }
+.badge-full-desc { font-size: 11px; color: var(--text-muted); }
+
+.side-panel { display: flex; flex-direction: column; gap: 16px; }
+
+@media (max-width: 900px) {
+  .garden-layout { grid-template-columns: 1fr; }
+}
+
+/* ===== DARK MODE ===== */
+[data-theme="dark"] .tree-label { color: rgba(255,255,255,0.9); text-shadow: 0 1px 4px rgba(0,0,0,0.6); }
+
+[data-theme="dark"] .habit-item { background: var(--card); border-color: var(--border); color: var(--text); }
+[data-theme="dark"] .habit-item:hover:not(:disabled) { background: var(--accent-purple); border-color: var(--primary); }
+[data-theme="dark"] .habit-item.done { background: var(--accent-green); border-color: rgba(85,239,196,0.4); }
+
+[data-theme="dark"] .badge-full { background: var(--card); border-color: var(--border); color: var(--text); }
+[data-theme="dark"] .badge-full.earned { background: var(--accent-purple); border-color: var(--primary); }
+[data-theme="dark"] .badge-full-desc { color: var(--text-muted); }
+
+[data-theme="dark"] .health-bar { background: var(--border); }

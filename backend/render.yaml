@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: mindbuddy-backend
+    runtime: node
+    buildCommand: npm install
+    startCommand: node src/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: GROQ_API_KEY
+        sync: false        # Điền thủ công trên Render dashboard
+      - key: GEMINI_API_KEY
+        sync: false        # Điền thủ công trên Render dashboard
+      - key: FRONTEND_URL
+        sync: false        # Điền URL Netlify của bạn

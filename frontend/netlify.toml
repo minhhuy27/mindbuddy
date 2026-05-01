@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build:netlify"
+  publish = "build"
+
+# Redirect tất cả routes về index.html để React Router hoạt động
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
