@@ -27,10 +27,11 @@ const DEFAULT_DATA = {
   gardenLevel: 0,
   earnedBadges: [],
   emergencyContact: '',
-  todayAI: null,       // { date, advice, moodLabel, chatMessages }
-  aiMemory: [],        // [{ date, summary, moods }] — tối đa 7 ngày gần nhất
+  todayAI: null,
+  aiMemory: [],
   meditateCount: 0,
   customMoods: [],
+  weeklyInsight: null, // { text, logCount, savedAt }
   confessions: [
     { id: 1, text: 'Thi trượt môn Toán, không biết nói với ba mẹ thế nào...', hugs: 12, time: '2h trước', x: 20, y: 30 },
     { id: 2, text: 'Xa nhà 3 năm rồi, nhớ mẹ quá 😢', hugs: 8, time: '5h trước', x: 60, y: 50 },
@@ -218,6 +219,9 @@ export function AppProvider({ children }) {
       growGarden,
       setEmergencyContact: (v) => save({ emergencyContact: v }),
       saveTodayAI: (aiData) => save({ todayAI: { ...aiData, date: new Date().toDateString() } }),
+      saveWeeklyInsight: (text, logCount) => save({
+        weeklyInsight: { text, logCount, savedAt: Date.now() },
+      }),
       saveAiMemory: (entry) => {
         // entry: { date, summary, moods }
         // Giữ tối đa 7 ngày, không trùng ngày
