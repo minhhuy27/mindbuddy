@@ -169,7 +169,7 @@ export default function WeeklyInsight() {
             style={{ fontSize: 12, padding: '5px 12px' }}
             onClick={fetchInsight}
             disabled={loading}
-            title="Phân tích lại bằng DeepSeek V4 Flash"
+            title="Phân tích lại bằng Gemini"
           >
             {loading ? '⏳' : '🔄 Cập nhật'}
           </button>
