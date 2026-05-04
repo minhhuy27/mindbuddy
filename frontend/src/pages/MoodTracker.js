@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { format, isToday, isYesterday, subDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { analyzeMood, createChat, detectDanger, summarizeDay } from '../utils/aiService';
 import { exportMoodPDF, exportAllMoodPDF } from '../utils/exportPDF';
+import CrisisPanel from '../components/CrisisPanel';
 import './MoodTracker.css';
 
 const CAUSES = ['Học tập', 'Thi cử', 'Tài chính', 'Bạn bè', 'Gia đình', 'Sức khỏe', 'Tình yêu', 'Khác'];
@@ -77,7 +79,7 @@ function CustomMoodModal({ onClose, onSave }) {
       <div className="modal-box">
         <div className="modal-header">
           <h3>✨ Thêm cảm xúc mới</h3>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose} aria-label="Đóng hộp thoại thêm cảm xúc">✕</button>
         </div>
 
         {/* Preview */}
@@ -160,7 +162,7 @@ export default function MoodTracker() {
     MOODS, customMoods, moodLogs,
     addMoodLog, updateMoodLog, deleteMoodLog,
     addCustomMood, deleteCustomMood,
-    user, todayAI, saveTodayAI, aiMemory, saveAiMemory,
+    user, todayAI, saveTodayAI, aiMemory, saveAiMemory, userGoal,
   } = useApp();
 
   // Tất cả moods = built-in + custom
@@ -172,6 +174,7 @@ export default function MoodTracker() {
   const [causes, setCauses] = useState([]);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [checkinFeedback, setCheckinFeedback] = useState('');
 
   // ── Custom mood modal ──
   const [showModal, setShowModal] = useState(false);
@@ -206,12 +209,13 @@ export default function MoodTracker() {
         todayAIData.advice,
         todayAIData.moodLabel,
         todayAIData.chatMessages || [],
-        aiMemory || []
+        aiMemory || [],
+        userGoal
       );
       setAiAdvice(todayAIData.advice);
       setChatMessages(todayAIData.chatMessages || []);
     }
-  }, [todayAI]);
+  }, [todayAI, userGoal]);
 
   // Tự động tóm tắt ngày hôm qua nếu chưa có trong memory
   React.useEffect(() => {
@@ -290,6 +294,7 @@ export default function MoodTracker() {
         causes: request.causes,
         recentMoods: request.recentMoods,
         aiMemory: request.aiMemory,
+        userGoal: request.userGoal,
       });
 
       if (!advice) {
@@ -302,7 +307,7 @@ export default function MoodTracker() {
       setChatOpen(true);
       setChatError('');
       setFailedChatMessage('');
-      chatFnRef.current = createChat(advice, request.moodLabel, [], request.aiMemory || []);
+      chatFnRef.current = createChat(advice, request.moodLabel, [], request.aiMemory || [], request.userGoal);
       saveTodayAI({ advice, moodLabel: request.moodLabel, chatMessages: [] });
 
       const todayLabel = format(new Date(), 'dd/MM/yyyy');
@@ -339,14 +344,18 @@ export default function MoodTracker() {
     setSaving(true);
     const mood = allMoods.find(m => m.id === selected);
     const fullNote = note + (causes.length ? ` [${causes.join(', ')}]` : '');
+    if (detectDanger(fullNote)) setShowSOS(true);
 
     if (editingId) {
       await updateMoodLog(editingId, selected, fullNote);
+      setCheckinFeedback('Đã cập nhật ghi chú cảm xúc.');
       resetForm();
     } else {
       await addMoodLog(selected, fullNote);
+      setCheckinFeedback('Đã lưu cảm xúc. Vườn, streak và huy hiệu của bạn đang được cập nhật.');
       resetForm();
     }
+    window.setTimeout(() => setCheckinFeedback(''), 3200);
 
     setSaving(false);
 
@@ -361,6 +370,7 @@ export default function MoodTracker() {
       fullNote,
       recentMoods,
       aiMemory: aiMemory || [],
+      userGoal,
     });
   };
 
@@ -457,6 +467,36 @@ export default function MoodTracker() {
     }));
   })();
 
+  const monthHeatmap = (() => {
+    const monthLogs = moodLogs
+      .filter(log => {
+        const d = new Date(log.date);
+        return d.getMonth() === exportMonth && d.getFullYear() === exportYear;
+      })
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    const logsByDay = monthLogs.reduce((acc, log) => {
+      const key = new Date(log.date).toDateString();
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(log);
+      return acc;
+    }, {});
+
+    const first = new Date(exportYear, exportMonth, 1);
+    const daysInMonth = new Date(exportYear, exportMonth + 1, 0).getDate();
+    const blanks = Array.from({ length: first.getDay() }, (_, index) => index);
+    const days = Array.from({ length: daysInMonth }, (_, index) => {
+      const date = new Date(exportYear, exportMonth, index + 1);
+      const key = date.toDateString();
+      const logs = logsByDay[key] || [];
+      const latest = logs[0];
+      const mood = latest ? allMoods.find(m => m.id === latest.mood) : null;
+      return { key, day: index + 1, logs, mood };
+    });
+
+    return { blanks, days };
+  })();
+
   const grouped = groupByDay(filteredMoodLogs);
   const visibleGroups = grouped;
 
@@ -482,6 +522,8 @@ export default function MoodTracker() {
                 <button key={m.id}
                   className={`mood-btn ${selected === m.id ? 'selected' : ''}`}
                   style={{ '--mood-color': m.color }}
+                  aria-pressed={selected === m.id}
+                  aria-label={`Chọn cảm xúc ${m.label}`}
                   onClick={() => setSelected(m.id)}>
                   <span className="mood-emoji">{m.emoji}</span>
                   <span className="mood-label">{m.label}</span>
@@ -497,6 +539,7 @@ export default function MoodTracker() {
                   className="btn-add-mood"
                   onClick={() => setShowModal(true)}
                   title="Thêm cảm xúc mới"
+                  aria-label="Thêm cảm xúc mới"
                 >
                   + Thêm
                 </button>
@@ -516,6 +559,8 @@ export default function MoodTracker() {
                       <button
                         className={`mood-btn ${selected === m.id ? 'selected' : ''}`}
                         style={{ '--mood-color': m.color }}
+                        aria-pressed={selected === m.id}
+                        aria-label={`Chọn cảm xúc tùy chỉnh ${m.label}`}
                         onClick={() => setSelected(m.id)}>
                         <span className="mood-emoji">{m.emoji}</span>
                         <span className="mood-label">{m.label}</span>
@@ -524,6 +569,7 @@ export default function MoodTracker() {
                         className="mood-btn-delete"
                         onClick={(e) => handleDeleteCustomMood(m.id, e)}
                         title="Xóa cảm xúc này"
+                        aria-label={`Xóa cảm xúc ${m.label}`}
                       >✕</button>
                     </div>
                   ))}
@@ -539,6 +585,8 @@ export default function MoodTracker() {
                     {CAUSES.map(c => (
                       <button key={c}
                         className={`cause-btn ${causes.includes(c) ? 'active' : ''}`}
+                        aria-pressed={causes.includes(c)}
+                        aria-label={`Chọn nguyên nhân ${c}`}
                         onClick={() => toggleCause(c)}>{c}
                       </button>
                     ))}
@@ -548,7 +596,10 @@ export default function MoodTracker() {
                   <label className="form-label">Ghi chú thêm</label>
                   <textarea
                     value={note}
-                    onChange={e => setNote(e.target.value)}
+                    onChange={e => {
+                      setNote(e.target.value);
+                      if (detectDanger(e.target.value)) setShowSOS(true);
+                    }}
                     placeholder="Hôm nay có chuyện gì xảy ra..."
                     rows={4}
                   />
@@ -571,6 +622,13 @@ export default function MoodTracker() {
               </>
             )}
           </div>
+          {checkinFeedback && (
+            <div className="checkin-feedback" role="status">
+              <span aria-hidden="true">✨</span>
+              <span>{checkinFeedback}</span>
+            </div>
+          )}
+          {showSOS && <CrisisPanel onDismiss={() => setShowSOS(false)} />}
 
           {/* AI Advice & Chat */}
           {(aiLoading || aiAdvice || aiError) && (
@@ -616,26 +674,19 @@ export default function MoodTracker() {
                             setChatMessages([]);
                             setChatError('');
                             setFailedChatMessage('');
-                            chatFnRef.current = createChat(aiAdvice, todayAI?.moodLabel || '', []);
+                            chatFnRef.current = createChat(aiAdvice, todayAI?.moodLabel || '', [], aiMemory || [], userGoal);
                             saveTodayAI({ advice: aiAdvice, moodLabel: todayAI?.moodLabel || '', chatMessages: [] });
                           }}>🔄 Mới</button>
                         )}
                         <button className="chat-action-btn" onClick={() => {
                           if (!chatFnRef.current)
-                            chatFnRef.current = createChat(aiAdvice, todayAI?.moodLabel || '', chatMessages);
+                            chatFnRef.current = createChat(aiAdvice, todayAI?.moodLabel || '', chatMessages, aiMemory || [], userGoal);
                           setChatOpen(o => !o);
                         }}>
                           {chatOpen ? '▲' : '▼'}
                         </button>
                       </div>
                     </div>
-                    {showSOS && (
-                      <div className="sos-alert">
-                        <span>🆘 Bạn đang không ổn? Hãy gọi ngay hotline miễn phí:</span>
-                        <a href="tel:1800599920" className="sos-call-btn">📞 1800 599 920</a>
-                        <button className="sos-dismiss" onClick={() => setShowSOS(false)}>✕</button>
-                      </div>
-                    )}
                     {chatOpen && (
                       <>
                         <div className="chat-messages">
@@ -703,7 +754,47 @@ export default function MoodTracker() {
             </div>
           </div>
 
-          {chartData.length > 0 && (
+          <div className="card mood-calendar-card mb-4">
+            <div className="mood-calendar-header">
+              <div>
+                <h3>🗓️ Mood calendar</h3>
+                <p className="text-muted">Màu mỗi ngày lấy theo check-in mới nhất, có kèm nhãn cảm xúc.</p>
+              </div>
+              <span>Tháng {exportMonth + 1}/{exportYear}</span>
+            </div>
+            <div className="mood-calendar-weekdays" aria-hidden="true">
+              {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map(day => <span key={day}>{day}</span>)}
+            </div>
+            <div className="mood-calendar-grid">
+              {monthHeatmap.blanks.map(blank => (
+                <span key={`blank-${blank}`} className="mood-calendar-blank" />
+              ))}
+              {monthHeatmap.days.map(day => (
+                <button
+                  key={day.key}
+                  className={`mood-calendar-day ${day.logs.length ? 'has-mood' : ''}`}
+                  style={{ '--day-color': day.mood?.color || 'var(--border)' }}
+                  disabled={!day.logs.length}
+                  onClick={() => setSelectedDayDetail({ dayKey: day.key, logs: day.logs })}
+                  aria-label={day.logs.length
+                    ? `${day.day}/${exportMonth + 1}: ${day.mood?.label}, ${day.logs.length} ghi chú`
+                    : `${day.day}/${exportMonth + 1}: chưa có ghi chú`}
+                >
+                  <span className="mood-calendar-number">{day.day}</span>
+                  {day.mood ? (
+                    <>
+                      <span className="mood-calendar-emoji" aria-hidden="true">{day.mood.emoji}</span>
+                      <small>{day.mood.label}</small>
+                    </>
+                  ) : (
+                    <small>Trống</small>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {chartData.length > 0 ? (
             <div className="card mb-4">
               <h3 className="mb-3">📊 Biểu đồ cảm xúc {historyRange} ngày</h3>
               <ResponsiveContainer width="100%" height={160}>
@@ -719,6 +810,14 @@ export default function MoodTracker() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="card mb-4">
+              <div className="empty-timeline chart-empty">
+                <div style={{ fontSize: 36 }} aria-hidden="true">📊</div>
+                <p>Chưa có biểu đồ cho {historyRange} ngày gần đây.</p>
+                <Link to="/mood" className="btn btn-primary">Ghi cảm xúc đầu tiên</Link>
+              </div>
             </div>
           )}
 
@@ -759,9 +858,10 @@ export default function MoodTracker() {
 
             {moodLogs.length === 0 ? (
               <div className="empty-timeline">
-                <div style={{ fontSize: 40 }}>📭</div>
+                <div style={{ fontSize: 40 }} aria-hidden="true">📭</div>
                 <p>Chưa có ghi chú nào.</p>
                 <p className="text-muted">Hãy ghi lại cảm xúc đầu tiên của bạn!</p>
+                <Link to="/mood" className="btn btn-primary mt-2">Ghi cảm xúc đầu tiên</Link>
               </div>
             ) : (
               <>
@@ -823,9 +923,9 @@ export default function MoodTracker() {
                                   )}
                                   <div className="entry-actions">
                                     <button className="entry-btn edit"
-                                      onClick={() => startEdit(log)} title="Chỉnh sửa">✏️</button>
+                                      onClick={() => startEdit(log)} title="Chỉnh sửa" aria-label={`Chỉnh sửa ghi chú lúc ${format(new Date(log.date), 'HH:mm')}`}>✏️</button>
                                     <button className="entry-btn delete"
-                                      onClick={() => handleDelete(log.id)} title="Xóa">🗑️</button>
+                                      onClick={() => handleDelete(log.id)} title="Xóa" aria-label={`Xóa ghi chú lúc ${format(new Date(log.date), 'HH:mm')}`}>🗑️</button>
                                   </div>
                                 </div>
                                 {causeTags.length > 0 && (
@@ -860,7 +960,7 @@ export default function MoodTracker() {
           <div className="modal-box day-detail-modal">
             <div className="modal-header">
               <h3>Chi tiết {dayLabel(selectedDayDetail.dayKey)}</h3>
-              <button className="modal-close" onClick={() => setSelectedDayDetail(null)}>✕</button>
+              <button className="modal-close" onClick={() => setSelectedDayDetail(null)} aria-label="Đóng chi tiết ngày">✕</button>
             </div>
             <div className="day-detail-list">
               {selectedDayDetail.logs.map(log => {

@@ -61,6 +61,119 @@
   font-size: 12px;
 }
 
+.dashboard-focus-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.quick-checkin-widget,
+.goal-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.section-heading-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-heading-row h3 { font-size: 18px; margin-bottom: 4px; }
+.section-heading-row p { font-size: 13px; line-height: 1.45; }
+
+.quick-link {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.quick-link:hover { text-decoration: underline; }
+
+.quick-mood-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.quick-mood-btn {
+  min-height: 70px;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+.quick-mood-btn span { font-size: 24px; }
+.quick-mood-btn small { font-size: 11px; font-weight: 700; }
+.quick-mood-btn:hover {
+  border-color: var(--mood-color);
+  transform: translateY(-1px);
+}
+.quick-mood-btn.selected {
+  border-color: var(--mood-color);
+  background: color-mix(in srgb, var(--mood-color) 16%, var(--card));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mood-color) 24%, transparent);
+}
+
+.quick-checkin-widget textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+
+.quick-feedback {
+  color: var(--success);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.goal-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.goal-option {
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  padding: 12px;
+  text-align: left;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+.goal-option:hover {
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+.goal-option.active {
+  border-color: var(--primary);
+  background: var(--accent-purple);
+}
+.goal-option strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.goal-option span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .stat-card {
   background: var(--card); border-radius: 16px; padding: 20px;
@@ -69,6 +182,34 @@
 .stat-icon { font-size: 28px; margin-bottom: 8px; }
 .stat-value { font-size: 28px; font-weight: 700; color: var(--primary); }
 .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.progress-card { text-align: left; }
+.progress-card .stat-icon,
+.progress-card .stat-value,
+.progress-card .stat-label { text-align: center; }
+.mini-progress {
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  margin-top: 12px;
+}
+.mini-progress span {
+  display: block;
+  height: 100%;
+  min-width: 4px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), var(--success));
+  transition: width 0.45s ease;
+}
+.progress-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  margin-top: 8px;
+  text-align: center;
+}
 
 .badges-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .badge-item {
@@ -99,10 +240,23 @@
 .action-label { font-size: 12px; font-weight: 600; text-align: center; }
 
 .empty-state { text-align: center; color: var(--text-muted); padding: 40px 0; font-size: 14px; }
+.rich-empty {
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.rich-empty h4 { color: var(--text); font-size: 16px; }
+.rich-empty p { max-width: 300px; line-height: 1.5; }
+.empty-icon { font-size: 34px; }
 
 @media (max-width: 768px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .quick-actions .actions-grid { grid-template-columns: repeat(2, 1fr); }
+  .dashboard-focus-grid { grid-template-columns: 1fr; }
+  .quick-mood-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .dashboard-hero {
     grid-template-columns: 1fr;
     padding: 24px;
@@ -118,6 +272,11 @@
 
 [data-theme="dark"] .stat-card { background: var(--card); border-color: var(--border); color: var(--text); }
 [data-theme="dark"] .stat-label { color: var(--text-muted); }
+[data-theme="dark"] .mini-progress { background: var(--bg); border-color: var(--border); }
+[data-theme="dark"] .quick-mood-btn,
+[data-theme="dark"] .goal-option { background: var(--bg); border-color: var(--border); color: var(--text); }
+[data-theme="dark"] .quick-mood-btn.selected,
+[data-theme="dark"] .goal-option.active { background: var(--card-hover); }
 
 [data-theme="dark"] .badge-item { background: var(--card); border-color: var(--border); color: var(--text); }
 [data-theme="dark"] .badge-item.earned { background: var(--accent-purple); border-color: var(--primary); }

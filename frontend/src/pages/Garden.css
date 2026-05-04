@@ -35,6 +35,12 @@
   background: linear-gradient(90deg, #55efc4, #00b894);
   transition: width 0.5s ease;
 }
+.garden-next-step {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
 
 .habits-list { display: flex; flex-direction: column; gap: 8px; }
 .habit-item {

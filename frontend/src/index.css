@@ -38,19 +38,19 @@ body {
 }
 
 [data-theme="dark"] {
-  --primary: #a29bfe;
-  --primary-light: #6c63ff;
-  --bg: #0f0f1a;
-  --card: #1a1a2e;
-  --text: #e8e8f0;
-  --text-muted: #9090a8;
-  --border: #2a2a40;
-  --shadow: 0 4px 20px rgba(0,0,0,0.4);
-  --card-hover: #22223a;
-  --accent-purple: rgba(162,155,254,0.15);
-  --accent-green: rgba(85,239,196,0.1);
-  --accent-pink: rgba(253,121,168,0.1);
-  --accent-red: rgba(225,112,85,0.15);
+  --primary: #b7b0ff;
+  --primary-light: #8178ff;
+  --bg: #121625;
+  --card: #1d2235;
+  --text: #f0f2fb;
+  --text-muted: #a9b2cf;
+  --border: #343b56;
+  --shadow: 0 8px 26px rgba(0,0,0,0.32);
+  --card-hover: #262c42;
+  --accent-purple: rgba(183,176,255,0.16);
+  --accent-green: rgba(85,239,196,0.13);
+  --accent-pink: rgba(253,121,168,0.13);
+  --accent-red: rgba(225,112,85,0.18);
   
   /* Gradient variables for dark mode */
   --garden-gradient: linear-gradient(180deg, #0d2137 0%, #1a3a4a 40%, #1a3a1a 70%, #0d2a0d 100%);
@@ -97,6 +97,27 @@ input, textarea, select {
 }
 input:focus, textarea:focus, select:focus { border-color: var(--primary); }
 
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--primary) 70%, white);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 h1 { font-size: 28px; font-weight: 700; }
 h2 { font-size: 22px; font-weight: 600; }
 h3 { font-size: 18px; font-weight: 600; }
@@ -136,10 +157,22 @@ h3 { font-size: 18px; font-weight: 600; }
 [data-theme="dark"] input,
 [data-theme="dark"] textarea,
 [data-theme="dark"] select {
-  background: var(--card);
+  background: #171c2d;
   color: var(--text);
   border-color: var(--border);
 }
+
+[data-theme="dark"] .card {
+  background: var(--card);
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .btn-secondary {
+  background: #303752;
+  color: var(--text);
+}
+
+[data-theme="dark"] .btn-secondary:hover { background: #3a4261; }
 
 [data-theme="dark"] .btn-primary { color: white; }
 [data-theme="dark"] .btn-danger { color: white; }

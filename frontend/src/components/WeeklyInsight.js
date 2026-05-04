@@ -95,7 +95,7 @@ function buildInsightSections(text) {
 }
 
 export default function WeeklyInsight() {
-  const { moodLogs, MOODS, weeklyInsight, saveWeeklyInsight } = useApp();
+  const { moodLogs, MOODS, weeklyInsight, saveWeeklyInsight, userGoal } = useApp();
   const [insight, setInsight] = useState(weeklyInsight?.text || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -116,11 +116,12 @@ export default function WeeklyInsight() {
     const noCache = !cache?.text;
     const hasNewLog = cache && moodLogs.length > (cache.logCount || 0);
     const expired = cache && (Date.now() - (cache.savedAt || 0)) > CACHE_TTL;
+    const goalChanged = cache && cache.goal !== userGoal;
 
-    if (noCache || hasNewLog || expired) {
+    if (noCache || hasNewLog || expired || goalChanged) {
       fetchInsight();
     }
-  }, [moodLogs.length]); // eslint-disable-line
+  }, [moodLogs.length, userGoal]); // eslint-disable-line
 
   const fetchInsight = async () => {
     if (inFlightRef.current) return;
@@ -128,10 +129,10 @@ export default function WeeklyInsight() {
     setLoading(true);
     setError('');
     try {
-      const result = await analyzeWeeklyTrend(moodLogs, MOODS);
+      const result = await analyzeWeeklyTrend(moodLogs, MOODS, userGoal);
       if (result) {
         setInsight(result);
-        saveWeeklyInsight(result, moodLogs.length);
+        saveWeeklyInsight(result, moodLogs.length, userGoal);
       } else {
         setError('Chưa thể phân tích lúc này. Vui lòng thử lại sau.');
       }
@@ -148,6 +149,9 @@ export default function WeeklyInsight() {
 
   const savedAt = weeklyInsight?.savedAt;
   const hoursAgo = savedAt ? Math.floor((Date.now() - savedAt) / (1000 * 60 * 60)) : null;
+  const cacheLabel = savedAt
+    ? hoursAgo === 0 ? 'Đang dùng kết quả đã lưu - vừa cập nhật' : `Đang dùng kết quả đã lưu - ${hoursAgo}h trước`
+    : '';
   const insightSections = buildInsightSections(insight);
 
   return (
@@ -155,9 +159,9 @@ export default function WeeklyInsight() {
       <div className="insight-header">
         <h3>🔍 Phân tích xu hướng AI</h3>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {hoursAgo !== null && !loading && (
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              {hoursAgo === 0 ? 'Vừa cập nhật' : `${hoursAgo}h trước`}
+          {cacheLabel && !loading && (
+            <span className="cache-indicator">
+              {cacheLabel}
             </span>
           )}
           <button

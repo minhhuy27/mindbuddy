@@ -1,6 +1,14 @@
 .weekly-insight { border-left: 4px solid var(--primary); }
 .insight-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .insight-text { font-size: 14px; line-height: 1.7; white-space: pre-wrap; color: var(--text); }
+.cache-indicator {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 9px;
+}
 
 .insight-section-grid {
   display: grid;

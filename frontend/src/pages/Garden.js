@@ -33,6 +33,8 @@ export default function Garden() {
   const treeStage = gardenLevel < 10 ? 0 : gardenLevel < 30 ? 1 : gardenLevel < 60 ? 2 : gardenLevel < 90 ? 3 : 4;
   const TREES = ['🌱', '🌿', '🌳', '🌲', '🌸'];
   const TREE_LABELS = ['Hạt giống', 'Cây non', 'Cây trưởng thành', 'Cây lớn', 'Cây nở hoa'];
+  const nextStageLevel = gardenLevel < 10 ? 10 : gardenLevel < 30 ? 30 : gardenLevel < 60 ? 60 : gardenLevel < 90 ? 90 : 100;
+  const remainingToStage = Math.max(0, nextStageLevel - gardenLevel);
 
   return (
     <div className="garden-page">
@@ -70,6 +72,9 @@ export default function Garden() {
               {gardenLevel < 30 ? '🥺 Cây đang cần được chăm sóc. Hãy thực hiện thói quen tốt!' :
                gardenLevel < 70 ? '😊 Cây đang phát triển tốt. Tiếp tục duy trì nhé!' :
                '🎉 Vườn của bạn đang rất tươi tốt! Tuyệt vời!'}
+            </p>
+            <p className="garden-next-step">
+              {gardenLevel >= 100 ? 'Vườn đã đạt trạng thái nở hoa.' : `Còn ${remainingToStage}% để đạt mốc ${nextStageLevel}% và nâng cấp cây.`}
             </p>
           </div>
         </div>
