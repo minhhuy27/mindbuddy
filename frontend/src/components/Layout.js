@@ -53,6 +53,16 @@ export default function Layout({ children }) {
         </div>
       )}
 
+      <nav className="bottom-nav" aria-label="Điều hướng nhanh">
+        {NAV.map(n => (
+          <Link key={n.path} to={n.path}
+            className={`bottom-nav-link ${location.pathname === n.path ? 'active' : ''} ${n.path === '/sos' ? 'sos-link' : ''}`}>
+            <span className="bottom-nav-icon">{n.icon}</span>
+            <span className="bottom-nav-label">{n.label}</span>
+          </Link>
+        ))}
+      </nav>
+
       <main className="main-content">{children}</main>
     </div>
   );

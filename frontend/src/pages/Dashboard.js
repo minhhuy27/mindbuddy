@@ -27,21 +27,52 @@ export default function Dashboard() {
   const gardenEmoji = gardenLevel < 20 ? '🌱' : gardenLevel < 50 ? '🌿' : gardenLevel < 80 ? '🌳' : '🌸';
   const todayLogs = moodLogs.filter(l => new Date(l.date).toDateString() === new Date().toDateString());
   const latestTodayMood = todayLogs[0]; // moodLogs đã sort mới nhất trước
+  const latestMood = latestTodayMood ? MOODS.find(m => m.id === latestTodayMood.mood) : null;
 
   return (
     <div className="dashboard">
-      <div className="welcome-banner">
-        <div>
-          <h1>Xin chào, {user?.displayName || user?.email}! 👋</h1>
-          <p className="text-muted mt-2">
+      <section className="dashboard-hero">
+        <div className="hero-copy">
+          <span className="hero-kicker">MindBuddy hôm nay</span>
+          <h1>Xin chào, {user?.displayName || user?.email}!</h1>
+          <p>
             {latestTodayMood
-              ? <>Hôm nay bạn đã ghi <strong>{todayLogs.length}</strong> lần · Cảm xúc gần nhất: {MOODS.find(m => m.id === latestTodayMood.mood)?.label} {MOODS.find(m => m.id === latestTodayMood.mood)?.emoji}</>
-              : 'Bạn cảm thấy thế nào hôm nay?'}
+              ? <>Bạn đã check-in <strong>{todayLogs.length}</strong> lần hôm nay. Lần gần nhất: <strong>{latestMood?.label}</strong> {latestMood?.emoji}</>
+              : 'Bắt đầu bằng một check-in ngắn để MindBuddy hiểu trạng thái hiện tại của bạn.'}
           </p>
+          <Link to="/mood" className="btn btn-primary hero-cta">
+            {latestTodayMood ? '+ Ghi thêm cảm xúc' : 'Ghi cảm xúc hôm nay'}
+          </Link>
         </div>
-        <Link to="/mood" className="btn btn-primary">
-          {latestTodayMood ? '+ Ghi thêm 💭' : 'Check-in ngay 💭'}
-        </Link>
+        <div className="hero-status">
+          <div className="hero-status-icon">{latestMood?.emoji || '💭'}</div>
+          <div>
+            <span className="hero-status-label">Trạng thái gần nhất</span>
+            <strong>{latestMood?.label || 'Chưa check-in'}</strong>
+          </div>
+          <div className="hero-status-meta">
+            <span>{streak} ngày liên tiếp</span>
+            <span>{gardenLevel}% vườn</span>
+          </div>
+        </div>
+      </section>
+
+      <div className="quick-actions">
+        <h3 className="mb-3">⚡ Truy cập nhanh</h3>
+        <div className="actions-grid">
+          {[
+            { to: '/mood', icon: '💭', label: latestTodayMood ? 'Ghi thêm cảm xúc' : 'Ghi cảm xúc', color: '#a29bfe', primary: true },
+            { to: '/pomodoro', icon: '🍅', label: 'Bắt đầu học', color: '#fd79a8' },
+            { to: '/community', icon: '🌍', label: 'Cộng đồng', color: '#74b9ff' },
+            { to: '/garden', icon: '🌱', label: 'Vườn tâm hồn', color: '#55efc4' },
+            { to: '/sos', icon: '🆘', label: 'Hỗ trợ khẩn cấp', color: '#e17055' },
+          ].map(a => (
+            <Link key={a.to} to={a.to} className={`action-card ${a.primary ? 'primary-action' : ''}`} style={{ '--action-color': a.color }}>
+              <span className="action-icon">{a.icon}</span>
+              <span className="action-label">{a.label}</span>
+            </Link>
+          ))}
+        </div>
       </div>
 
       <div className="stats-grid">
@@ -110,24 +141,6 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
-        </div>
-      </div>
-
-      <div className="quick-actions">
-        <h3 className="mb-3">⚡ Truy cập nhanh</h3>
-        <div className="actions-grid">
-          {[
-            { to: '/mood', icon: '💭', label: 'Ghi cảm xúc', color: '#a29bfe' },
-            { to: '/pomodoro', icon: '🍅', label: 'Bắt đầu học', color: '#fd79a8' },
-            { to: '/community', icon: '🌍', label: 'Cộng đồng', color: '#74b9ff' },
-            { to: '/garden', icon: '🌱', label: 'Vườn tâm hồn', color: '#55efc4' },
-            { to: '/sos', icon: '🆘', label: 'Hỗ trợ khẩn cấp', color: '#e17055' },
-          ].map(a => (
-            <Link key={a.to} to={a.to} className="action-card" style={{ '--action-color': a.color }}>
-              <span className="action-icon">{a.icon}</span>
-              <span className="action-label">{a.label}</span>
-            </Link>
-          ))}
         </div>
       </div>
 

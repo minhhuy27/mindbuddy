@@ -1,3 +1,61 @@
 .weekly-insight { border-left: 4px solid var(--primary); }
 .insight-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .insight-text { font-size: 14px; line-height: 1.7; white-space: pre-wrap; color: var(--text); }
+
+.insight-section-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.insight-section {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  padding: 14px;
+  background: var(--bg);
+}
+.insight-section.trend { border-color: color-mix(in srgb, var(--primary) 35%, var(--border)); }
+.insight-section.watch { border-color: color-mix(in srgb, var(--warning) 50%, var(--border)); }
+.insight-section.suggestion { border-color: color-mix(in srgb, var(--success) 45%, var(--border)); }
+.insight-section h4 {
+  color: var(--text);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.insight-section p {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.weekly-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 10px 0;
+}
+.weekly-status-title { color: var(--text); font-weight: 600; }
+
+.weekly-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--accent-red);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
+  color: var(--text);
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .insight-header,
+  .weekly-error {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .insight-section-grid { grid-template-columns: 1fr; }
+}

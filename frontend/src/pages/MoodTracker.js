@@ -180,9 +180,13 @@ export default function MoodTracker() {
   const todayAIData = todayAI?.date === new Date().toDateString() ? todayAI : null;
   const [aiAdvice, setAiAdvice] = useState(todayAIData?.advice || '');
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [lastAnalysisRequest, setLastAnalysisRequest] = useState(null);
   const [chatMessages, setChatMessages] = useState(todayAIData?.chatMessages || []);
   const [chatInput, setChatInput] = useState('');
   const [chatSending, setChatSending] = useState(false);
+  const [chatError, setChatError] = useState('');
+  const [failedChatMessage, setFailedChatMessage] = useState('');
   const [showSOS, setShowSOS] = useState(false);
   const [chatOpen, setChatOpen] = useState(true);
   const chatFnRef = React.useRef(null);
@@ -193,7 +197,8 @@ export default function MoodTracker() {
   const [exportMonth, setExportMonth] = useState(now.getMonth());
   const [exportYear, setExportYear] = useState(now.getFullYear());
   const [exporting, setExporting] = useState(false); // 'month' | 'all' | false
-  const [showDays, setShowDays] = useState(7);
+  const [historyRange, setHistoryRange] = useState(14);
+  const [selectedDayDetail, setSelectedDayDetail] = useState(null);
 
   React.useEffect(() => {
     if (todayAIData?.advice && todayAIData?.moodLabel) {
@@ -274,6 +279,61 @@ export default function MoodTracker() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const runMoodAnalysis = async (request) => {
+    setAiLoading(true);
+    setAiError('');
+    setLastAnalysisRequest(request);
+    try {
+      const advice = await analyzeMood({
+        moodLabel: request.moodLabel,
+        note: request.note,
+        causes: request.causes,
+        recentMoods: request.recentMoods,
+        aiMemory: request.aiMemory,
+      });
+
+      if (!advice) {
+        setAiError('MindBuddy AI chưa phản hồi được. Bạn có thể thử lại mà không cần ghi cảm xúc lại.');
+        return;
+      }
+
+      setAiAdvice(advice);
+      setChatMessages([]);
+      setChatOpen(true);
+      setChatError('');
+      setFailedChatMessage('');
+      chatFnRef.current = createChat(advice, request.moodLabel, [], request.aiMemory || []);
+      saveTodayAI({ advice, moodLabel: request.moodLabel, chatMessages: [] });
+
+      const todayLabel = format(new Date(), 'dd/MM/yyyy');
+      const todayLogs = [...moodLogs, {
+        mood: request.moodId,
+        note: request.fullNote,
+        date: new Date().toISOString(),
+      }].filter(l => new Date(l.date).toDateString() === new Date().toDateString());
+      const entries = todayLogs.map(l => {
+        const m = allMoods.find(x => x.id === l.mood);
+        const causesInNote = l.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
+        const cleanNote = l.note?.replace(/\s*\[.+\]$/, '') || '';
+        return { moodLabel: m?.label || 'Không rõ', note: cleanNote, causes: causesInNote };
+      });
+      summarizeDay({ date: todayLabel, entries }).then(summary => {
+        if (summary !== null) {
+          saveAiMemory({
+            date: todayLabel,
+            summary: summary || '',
+            moods: entries.map(e => e.moodLabel),
+          });
+        }
+      });
+    } catch (err) {
+      console.error('AI error:', err);
+      setAiError('MindBuddy AI phản hồi quá lâu hoặc đang lỗi. Vui lòng thử lại sau.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!selected || saving) return;
     setSaving(true);
@@ -288,50 +348,20 @@ export default function MoodTracker() {
       resetForm();
     }
 
-    setAiLoading(true);
-    try {
-      const recentMoods = moodLogs.slice(0, 7)
-        .map(l => allMoods.find(m => m.id === l.mood))
-        .filter(Boolean);
-      const advice = await analyzeMood({
-        moodLabel: mood.label,
-        note,
-        causes,
-        recentMoods,
-        aiMemory: aiMemory || [],
-      });
-      if (advice) {
-        setAiAdvice(advice);
-        setChatMessages([]);
-        setChatOpen(true);
-        chatFnRef.current = createChat(advice, mood.label, [], aiMemory || []);
-        saveTodayAI({ advice, moodLabel: mood.label, chatMessages: [] });
-
-        // Tóm tắt ngày hôm nay và lưu vào memory (chạy ngầm, không block UI)
-        const todayLabel = format(new Date(), 'dd/MM/yyyy');
-        const todayLogs = [...moodLogs, { mood: selected, note: fullNote, date: new Date().toISOString() }]
-          .filter(l => new Date(l.date).toDateString() === new Date().toDateString());
-        const entries = todayLogs.map(l => {
-          const m = allMoods.find(x => x.id === l.mood);
-          const causesInNote = l.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
-          const cleanNote = l.note?.replace(/\s*\[.+\]$/, '') || '';
-          return { moodLabel: m?.label || 'Không rõ', note: cleanNote, causes: causesInNote };
-        });
-        summarizeDay({ date: todayLabel, entries }).then(summary => {
-          if (summary !== null) {
-            saveAiMemory({
-              date: todayLabel,
-              summary: summary || '',
-              moods: entries.map(e => e.moodLabel),
-            });
-          }
-        });
-      }
-    } catch (err) {
-      console.error('AI error:', err);
-    }
-    setAiLoading(false);
     setSaving(false);
+
+    const recentMoods = moodLogs.slice(0, 7)
+      .map(l => allMoods.find(m => m.id === l.mood))
+      .filter(Boolean);
+    await runMoodAnalysis({
+      moodId: selected,
+      moodLabel: mood.label,
+      note,
+      causes,
+      fullNote,
+      recentMoods,
+      aiMemory: aiMemory || [],
+    });
   };
 
   const handleDelete = async (id) => {
@@ -346,12 +376,17 @@ export default function MoodTracker() {
     await deleteCustomMood(moodId);
   };
 
-  const sendChat = async () => {
-    if (!chatInput.trim() || !chatFnRef.current || chatSending) return;
-    const userMsg = chatInput.trim();
-    setChatInput('');
+  const sendChat = async (retryMessage) => {
+    const userMsg = (retryMessage || chatInput).trim();
+    if (!userMsg || !chatFnRef.current || chatSending) return;
+    if (!retryMessage) setChatInput('');
+    setChatError('');
+    setFailedChatMessage('');
     if (detectDanger(userMsg)) setShowSOS(true);
-    const next = [...chatMessages, { role: 'user', text: userMsg }];
+    const baseMessages = retryMessage
+      ? chatMessages.filter((m, index) => !(index === chatMessages.length - 1 && m.role === 'user' && m.text === retryMessage))
+      : chatMessages;
+    const next = [...baseMessages, { role: 'user', text: userMsg }];
     setChatMessages(next);
     saveTodayAI({ advice: aiAdvice, moodLabel: todayAI?.moodLabel || '', chatMessages: next });
     setChatSending(true);
@@ -362,9 +397,11 @@ export default function MoodTracker() {
       setChatMessages(next2);
       saveTodayAI({ advice: aiAdvice, moodLabel: todayAI?.moodLabel || '', chatMessages: next2 });
     } catch {
-      setChatMessages(prev => [...prev, { role: 'ai', text: 'Xin lỗi, có lỗi xảy ra. Thử lại nhé!' }]);
+      setFailedChatMessage(userMsg);
+      setChatError('MindBuddy AI phản hồi quá lâu hoặc đang lỗi. Tin nhắn của bạn chưa được gửi lại cho AI.');
+    } finally {
+      setChatSending(false);
     }
-    setChatSending(false);
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
@@ -398,24 +435,30 @@ export default function MoodTracker() {
     }
   };
 
+  const filteredMoodLogs = (() => {
+    const cutoff = subDays(new Date(), historyRange - 1);
+    cutoff.setHours(0, 0, 0, 0);
+    return moodLogs.filter(l => new Date(l.date) >= cutoff);
+  })();
+
   // Chart: log mới nhất mỗi ngày
   const chartData = (() => {
-    const sorted = [...moodLogs].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const sorted = [...filteredMoodLogs].sort((a, b) => new Date(b.date) - new Date(a.date));
     const seen = new Set();
     const unique = [];
     sorted.forEach(l => {
       const key = new Date(l.date).toDateString();
       if (!seen.has(key)) { seen.add(key); unique.push(l); }
     });
-    return unique.slice(0, 14).reverse().map(l => ({
+    return unique.slice(0, historyRange).reverse().map(l => ({
       date: format(new Date(l.date), 'dd/MM', { locale: vi }),
       score: allMoods.find(m => m.id === l.mood)?.score ?? 0,
       color: allMoods.find(m => m.id === l.mood)?.color || '#ccc',
     }));
   })();
 
-  const grouped = groupByDay(moodLogs);
-  const visibleGroups = grouped.slice(0, showDays);
+  const grouped = groupByDay(filteredMoodLogs);
+  const visibleGroups = grouped;
 
   return (
     <div className="mood-tracker">
@@ -530,10 +573,26 @@ export default function MoodTracker() {
           </div>
 
           {/* AI Advice & Chat */}
-          {(aiLoading || aiAdvice) && (
+          {(aiLoading || aiAdvice || aiError) && (
             <div className="card mt-4">
               {aiLoading && (
-                <div className="ai-loading">🤖 AI đang phân tích cảm xúc của bạn...</div>
+                <div className="ai-loading ai-status">
+                  <span className="ai-status-title">AI đang phân tích cảm xúc của bạn</span>
+                  <span className="ai-status-detail">Thường mất vài chục giây. Bạn có thể tiếp tục xem nhật ký trong lúc chờ.</span>
+                </div>
+              )}
+              {aiError && !aiLoading && (
+                <div className="ai-error">
+                  <div>
+                    <strong>Chưa lấy được lời khuyên AI</strong>
+                    <p>{aiError}</p>
+                  </div>
+                  {lastAnalysisRequest && (
+                    <button className="btn btn-secondary" onClick={() => runMoodAnalysis(lastAnalysisRequest)}>
+                      Thử lại
+                    </button>
+                  )}
+                </div>
               )}
               {aiAdvice && !aiLoading && (
                 <>
@@ -555,6 +614,8 @@ export default function MoodTracker() {
                         {chatMessages.length > 0 && (
                           <button className="chat-action-btn" onClick={() => {
                             setChatMessages([]);
+                            setChatError('');
+                            setFailedChatMessage('');
                             chatFnRef.current = createChat(aiAdvice, todayAI?.moodLabel || '', []);
                             saveTodayAI({ advice: aiAdvice, moodLabel: todayAI?.moodLabel || '', chatMessages: [] });
                           }}>🔄 Mới</button>
@@ -587,11 +648,21 @@ export default function MoodTracker() {
                           {chatSending && (
                             <div className="chat-bubble ai">
                               <span className="chat-avatar">🤖</span>
-                              <span className="chat-text typing">Đang trả lời...</span>
+                              <span className="chat-text typing">Đang trả lời, vui lòng đợi trong giây lát...</span>
                             </div>
                           )}
                           <div ref={chatEndRef} />
                         </div>
+                        {chatError && (
+                          <div className="chat-error">
+                            <span>{chatError}</span>
+                            {failedChatMessage && (
+                              <button className="chat-retry-btn" onClick={() => sendChat(failedChatMessage)}>
+                                Thử lại
+                              </button>
+                            )}
+                          </div>
+                        )}
                         <div className="chat-input-row">
                           <input
                             value={chatInput}
@@ -600,7 +671,7 @@ export default function MoodTracker() {
                             placeholder="Nhắn tin với AI..."
                             disabled={chatSending}
                           />
-                          <button className="btn btn-primary" onClick={sendChat}
+                          <button className="btn btn-primary" onClick={() => sendChat()}
                             disabled={chatSending || !chatInput.trim()}>Gửi</button>
                         </div>
                       </>
@@ -614,9 +685,27 @@ export default function MoodTracker() {
 
         {/* ── CỘT PHẢI: Timeline ── */}
         <div className="tracker-timeline-col">
+          <div className="history-toolbar card mb-4">
+            <div>
+              <h3>Lịch sử cảm xúc</h3>
+              <p className="text-muted">Xem nhanh theo khoảng thời gian và mở từng ngày để xem chi tiết.</p>
+            </div>
+            <div className="history-filters" role="tablist" aria-label="Lọc lịch sử cảm xúc">
+              {[7, 14, 30].map(days => (
+                <button
+                  key={days}
+                  className={`history-filter-btn ${historyRange === days ? 'active' : ''}`}
+                  onClick={() => setHistoryRange(days)}
+                >
+                  {days} ngày
+                </button>
+              ))}
+            </div>
+          </div>
+
           {chartData.length > 0 && (
             <div className="card mb-4">
-              <h3 className="mb-3">📊 Biểu đồ cảm xúc</h3>
+              <h3 className="mb-3">📊 Biểu đồ cảm xúc {historyRange} ngày</h3>
               <ResponsiveContainer width="100%" height={160}>
                 <BarChart data={chartData} barSize={20}>
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} />
@@ -676,12 +765,37 @@ export default function MoodTracker() {
               </div>
             ) : (
               <>
+                {grouped.length > 0 && (
+                  <div className="history-calendar">
+                    {grouped.map(([dayKey, logs]) => {
+                      const latestLog = logs[0];
+                      const mood = allMoods.find(m => m.id === latestLog.mood);
+                      return (
+                        <button
+                          key={dayKey}
+                          className="history-day-chip"
+                          style={{ '--day-color': mood?.color || '#ccc' }}
+                          onClick={() => setSelectedDayDetail({ dayKey, logs })}
+                          title={`Xem chi tiết ${dayLabel(dayKey)}`}
+                        >
+                          <span className="history-day-date">{format(new Date(dayKey), 'dd/MM')}</span>
+                          <span className="history-day-dot" />
+                          <span className="history-day-count">{logs.length}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 <div className="timeline">
                   {visibleGroups.map(([dayKey, logs]) => (
                     <div key={dayKey} className="timeline-day">
                       <div className="timeline-day-header">
-                        <span className="timeline-day-label">{dayLabel(dayKey)}</span>
-                        <span className="timeline-day-count">{logs.length} ghi chú</span>
+                        <button className="timeline-day-label day-detail-link" onClick={() => setSelectedDayDetail({ dayKey, logs })}>
+                          {dayLabel(dayKey)}
+                        </button>
+                        <button className="timeline-day-count" onClick={() => setSelectedDayDetail({ dayKey, logs })}>
+                          {logs.length} ghi chú
+                        </button>
                       </div>
                       <div className="timeline-entries">
                         {logs.map(log => {
@@ -730,17 +844,48 @@ export default function MoodTracker() {
                     </div>
                   ))}
                 </div>
-                {grouped.length > showDays && (
-                  <button className="btn btn-secondary w-full mt-3"
-                    onClick={() => setShowDays(d => d + 7)}>
-                    Xem thêm {Math.min(7, grouped.length - showDays)} ngày trước
-                  </button>
+                {grouped.length === 0 && (
+                  <div className="empty-timeline">
+                    <p>Không có ghi chú trong {historyRange} ngày gần đây.</p>
+                  </div>
                 )}
               </>
             )}
           </div>
         </div>
       </div>
+
+      {selectedDayDetail && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setSelectedDayDetail(null)}>
+          <div className="modal-box day-detail-modal">
+            <div className="modal-header">
+              <h3>Chi tiết {dayLabel(selectedDayDetail.dayKey)}</h3>
+              <button className="modal-close" onClick={() => setSelectedDayDetail(null)}>✕</button>
+            </div>
+            <div className="day-detail-list">
+              {selectedDayDetail.logs.map(log => {
+                const mood = allMoods.find(m => m.id === log.mood);
+                const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
+                const causeTags = log.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
+                return (
+                  <div key={log.id} className="day-detail-entry" style={{ '--entry-color': mood?.color || '#ccc' }}>
+                    <div className="day-detail-entry-head">
+                      <span className="day-detail-mood">{mood?.emoji} {mood?.label}</span>
+                      <span className="day-detail-time">{format(new Date(log.date), 'HH:mm')}</span>
+                    </div>
+                    {causeTags.length > 0 && (
+                      <div className="entry-causes">
+                        {causeTags.map(t => <span key={t} className="entry-cause-tag">{t}</span>)}
+                      </div>
+                    )}
+                    {cleanNote ? <p className="entry-note">{cleanNote}</p> : <p className="entry-note">Không có ghi chú thêm.</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal thêm custom mood */}
       {showModal && (
