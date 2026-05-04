@@ -31,6 +31,7 @@ const DEFAULT_DATA = {
   aiMemory: [],
   meditateCount: 0,
   customMoods: [],
+  userGoal: 'stress',
   weeklyInsight: null, // { text, logCount, savedAt }
   confessions: [
     { id: 1, text: 'Thi trượt môn Toán, không biết nói với ba mẹ thế nào...', hugs: 12, time: '2h trước', x: 20, y: 30 },
@@ -218,9 +219,10 @@ export function AppProvider({ children }) {
       addCustomMood, deleteCustomMood,
       growGarden,
       setEmergencyContact: (v) => save({ emergencyContact: v }),
+      setUserGoal: (v) => save({ userGoal: v, weeklyInsight: null, todayAI: null }),
       saveTodayAI: (aiData) => save({ todayAI: { ...aiData, date: new Date().toDateString() } }),
-      saveWeeklyInsight: (text, logCount) => save({
-        weeklyInsight: { text, logCount, savedAt: Date.now() },
+      saveWeeklyInsight: (text, logCount, goal) => save({
+        weeklyInsight: { text, logCount, goal, savedAt: Date.now() },
       }),
       saveAiMemory: (entry) => {
         // entry: { date, summary, moods }

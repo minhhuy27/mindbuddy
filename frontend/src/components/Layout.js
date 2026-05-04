@@ -31,12 +31,12 @@ export default function Layout({ children }) {
             ))}
           </nav>
           <div className="header-right">
-            <button className="dark-toggle" onClick={() => setDarkMode(d => !d)} title="Chế độ tối">
+            <button className="dark-toggle" onClick={() => setDarkMode(d => !d)} title="Chế độ tối" aria-label={darkMode ? 'Chuyển sang chế độ sáng' : 'Chuyển sang chế độ tối'}>
               {darkMode ? '☀️' : '🌙'}
             </button>
             <span className="user-name">👤 {user?.displayName || user?.email}</span>
             <button className="btn btn-secondary" style={{ padding: '6px 14px', fontSize: 13 }} onClick={logout}>Đăng xuất</button>
-            <button className="menu-toggle" onClick={() => setMenuOpen(!menuOpen)}>☰</button>
+            <button className="menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-label="Mở menu điều hướng" aria-expanded={menuOpen}>☰</button>
           </div>
         </div>
       </header>
@@ -57,7 +57,7 @@ export default function Layout({ children }) {
         {NAV.map(n => (
           <Link key={n.path} to={n.path}
             className={`bottom-nav-link ${location.pathname === n.path ? 'active' : ''} ${n.path === '/sos' ? 'sos-link' : ''}`}>
-            <span className="bottom-nav-icon">{n.icon}</span>
+            <span className="bottom-nav-icon" aria-hidden="true">{n.icon}</span>
             <span className="bottom-nav-label">{n.label}</span>
           </Link>
         ))}

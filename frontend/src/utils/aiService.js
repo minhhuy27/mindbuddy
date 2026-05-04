@@ -15,6 +15,16 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = AI_TIMEOUT_MS) {
 let weeklyRequestKey = '';
 let weeklyRequest = null;
 
+const GOAL_LABELS = {
+  stress: 'giảm stress',
+  sleep: 'ngủ tốt hơn',
+  study: 'tập trung học tập',
+};
+
+function goalText(userGoal) {
+  return GOAL_LABELS[userGoal] || userGoal || '';
+}
+
 // Từ khóa nguy hiểm cần phát hiện
 const DANGER_KEYWORDS = [
   'tự tử', 'muốn chết', 'không muốn sống', 'kết thúc tất cả', 'không còn ý nghĩa',
@@ -31,12 +41,13 @@ export function detectDanger(text) {
  * Phân tích cảm xúc sau check-in.
  * aiMemory: [{ date, summary, moods }] — lịch sử các ngày trước
  */
-export async function analyzeMood({ moodLabel, note, causes, recentMoods, aiMemory }) {
+export async function analyzeMood({ moodLabel, note, causes, recentMoods, aiMemory, userGoal }) {
   try {
+    const goal = goalText(userGoal);
     const res = await fetchWithTimeout(`${API_BASE}/ai/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ moodLabel, note, causes, recentMoods, aiMemory }),
+      body: JSON.stringify({ moodLabel, note, causes, recentMoods, aiMemory, userGoal: goal }),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -51,9 +62,10 @@ export async function analyzeMood({ moodLabel, note, causes, recentMoods, aiMemo
  * Tạo chat function với memory context.
  * aiMemory: [{ date, summary, moods }]
  */
-export function createChat(initialAdvice, moodContext, existingMessages = [], aiMemory = []) {
+export function createChat(initialAdvice, moodContext, existingMessages = [], aiMemory = [], userGoal = '') {
+  const goal = goalText(userGoal);
   const history = [
-    { role: 'user', content: `Tôi cảm thấy ${moodContext} hôm nay.` },
+    { role: 'user', content: `Tôi cảm thấy ${moodContext} hôm nay.${goal ? ` Mục tiêu hiện tại của tôi là: ${goal}.` : ''}` },
     { role: 'assistant', content: initialAdvice },
     ...existingMessages.map(m => ({
       role: m.role === 'ai' ? 'assistant' : 'user',
@@ -67,7 +79,7 @@ export function createChat(initialAdvice, moodContext, existingMessages = [], ai
       const res = await fetchWithTimeout(`${API_BASE}/ai/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history, aiMemory }),
+        body: JSON.stringify({ messages: history, aiMemory, userGoal: goal }),
       });
       if (!res.ok) throw new Error('Server error');
       const data = await res.json();
@@ -107,7 +119,7 @@ export async function summarizeDay({ date, entries }) {
 /**
  * Phân tích xu hướng tuần.
  */
-export async function analyzeWeeklyTrend(moodLogs, MOODS) {
+export async function analyzeWeeklyTrend(moodLogs, MOODS, userGoal) {
   if (moodLogs.length < 3) return null;
 
   const recent = moodLogs.slice(0, 14).map(l => {
@@ -117,17 +129,18 @@ export async function analyzeWeeklyTrend(moodLogs, MOODS) {
     return `${days[d.getDay()]} ${d.toLocaleDateString('vi-VN')}: ${mood?.label || ''}${l.note ? ` (${l.note.slice(0, 50)})` : ''}`;
   }).join('\n');
 
-  const requestKey = recent;
+  const requestKey = `${userGoal || ''}|${recent}`;
   if (weeklyRequest && weeklyRequestKey === requestKey) {
     return weeklyRequest;
   }
 
   weeklyRequestKey = requestKey;
   weeklyRequest = (async () => {
+    const goal = goalText(userGoal);
     const res = await fetchWithTimeout(`${API_BASE}/ai/weekly`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ moodSummary: recent }),
+      body: JSON.stringify({ moodSummary: recent, userGoal: goal }),
     });
     if (!res.ok) return null;
     const data = await res.json();

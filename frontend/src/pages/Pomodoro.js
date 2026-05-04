@@ -106,6 +106,7 @@ export default function Pomodoro() {
   const progress = mode === 'work'
     ? ((workMin * 60 - timeLeft) / (workMin * 60)) * 100
     : ((breakMin * 60 - timeLeft) / (breakMin * 60)) * 100;
+  const remainingForBadge = Math.max(0, 10 - pomodoroCount);
 
   return (
     <div className="pomodoro-page">
@@ -146,6 +147,12 @@ export default function Pomodoro() {
 
           <div className="session-count">
             Phiên hôm nay: {sessions} 🍅 | Tổng: {pomodoroCount} 🍅
+          </div>
+          <div className="pomodoro-badge-progress">
+            <div className="mini-progress" role="progressbar" aria-valuemin="0" aria-valuemax="10" aria-valuenow={Math.min(pomodoroCount, 10)} aria-label="Tiến trình huy hiệu Pomodoro">
+              <span style={{ width: `${Math.min(100, (pomodoroCount / 10) * 100)}%` }} />
+            </div>
+            <p>{remainingForBadge === 0 ? 'Bạn đã đủ điều kiện huy hiệu Bậc thầy tập trung.' : `Còn ${remainingForBadge} phiên để mở huy hiệu Bậc thầy tập trung.`}</p>
           </div>
         </div>
 
