@@ -84,7 +84,7 @@ router.post('/weekly', async (req, res) => {
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `Dưới đây là nhật ký cảm xúc 2 tuần gần đây của tôi:\n${moodSummary}\n\nHãy phân tích ngắn gọn: nhận xét xu hướng cảm xúc, thời điểm thường căng thẳng/vui, và 1-2 gợi ý cải thiện. Tối đa 150 từ.`,
+        content: `Dưới đây là nhật ký cảm xúc gần đây của tôi:\n${moodSummary}\n\nHãy phân tích ngắn gọn, tối đa 150 từ, trả lời đúng 3 mục với tiêu đề sau:\nXu hướng chính:\nĐiểm cần chú ý:\nGợi ý hôm nay:`,
       },
     ]);
     console.log(`[weekly] provider: ${provider}`);
