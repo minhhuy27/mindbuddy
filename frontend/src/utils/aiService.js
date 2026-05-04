@@ -1,4 +1,19 @@
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const AI_TIMEOUT_MS = 70000;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = AI_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+let weeklyRequestKey = '';
+let weeklyRequest = null;
 
 // Từ khóa nguy hiểm cần phát hiện
 const DANGER_KEYWORDS = [
@@ -18,7 +33,7 @@ export function detectDanger(text) {
  */
 export async function analyzeMood({ moodLabel, note, causes, recentMoods, aiMemory }) {
   try {
-    const res = await fetch(`${API_BASE}/ai/analyze`, {
+    const res = await fetchWithTimeout(`${API_BASE}/ai/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ moodLabel, note, causes, recentMoods, aiMemory }),
@@ -49,7 +64,7 @@ export function createChat(initialAdvice, moodContext, existingMessages = [], ai
   return async (message) => {
     history.push({ role: 'user', content: message });
     try {
-      const res = await fetch(`${API_BASE}/ai/chat`, {
+      const res = await fetchWithTimeout(`${API_BASE}/ai/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: history, aiMemory }),
@@ -60,6 +75,7 @@ export function createChat(initialAdvice, moodContext, existingMessages = [], ai
       history.push({ role: 'assistant', content: reply });
       return reply;
     } catch (err) {
+      history.pop();
       console.error('createChat error:', err);
       throw err;
     }
@@ -74,7 +90,7 @@ export function createChat(initialAdvice, moodContext, existingMessages = [], ai
 export async function summarizeDay({ date, entries }) {
   if (!entries || entries.length === 0) return null;
   try {
-    const res = await fetch(`${API_BASE}/ai/summarize`, {
+    const res = await fetchWithTimeout(`${API_BASE}/ai/summarize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ date, entries }),
@@ -101,8 +117,14 @@ export async function analyzeWeeklyTrend(moodLogs, MOODS) {
     return `${days[d.getDay()]} ${d.toLocaleDateString('vi-VN')}: ${mood?.label || ''}${l.note ? ` (${l.note.slice(0, 50)})` : ''}`;
   }).join('\n');
 
-  try {
-    const res = await fetch(`${API_BASE}/ai/weekly`, {
+  const requestKey = recent;
+  if (weeklyRequest && weeklyRequestKey === requestKey) {
+    return weeklyRequest;
+  }
+
+  weeklyRequestKey = requestKey;
+  weeklyRequest = (async () => {
+    const res = await fetchWithTimeout(`${API_BASE}/ai/weekly`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ moodSummary: recent }),
@@ -110,8 +132,15 @@ export async function analyzeWeeklyTrend(moodLogs, MOODS) {
     if (!res.ok) return null;
     const data = await res.json();
     return data.content || null;
+  })();
+
+  try {
+    return await weeklyRequest;
   } catch (err) {
     console.error('analyzeWeeklyTrend error:', err);
     return null;
+  } finally {
+    weeklyRequest = null;
+    weeklyRequestKey = '';
   }
 }

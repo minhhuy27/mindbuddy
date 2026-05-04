@@ -11,6 +11,78 @@
 .tracker-form-col { display: flex; flex-direction: column; position: sticky; top: 80px; }
 .tracker-timeline-col { display: flex; flex-direction: column; }
 
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.history-toolbar p { margin-top: 4px; }
+.history-filters {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.history-filter-btn {
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 11px;
+}
+.history-filter-btn.active {
+  background: var(--primary);
+  color: white;
+}
+.history-calendar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.history-day-chip {
+  min-height: 58px;
+  border: 1px solid color-mix(in srgb, var(--day-color) 45%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--day-color) 10%, var(--card));
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  text-align: left;
+}
+.history-day-chip:hover { border-color: var(--day-color); transform: translateY(-1px); }
+.history-day-date { font-size: 12px; font-weight: 700; }
+.history-day-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--day-color);
+}
+.history-day-count {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.day-detail-link,
+.timeline-day-count {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+.day-detail-link { padding: 0; text-align: left; }
+.day-detail-link:hover { color: var(--primary); }
+.timeline-day-count:hover { color: var(--primary); }
+
 /* ── Form ── */
 .checkin-card { width: 100%; }
 .form-label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 8px; color: var(--text); }
@@ -41,7 +113,31 @@
 .cause-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
 
 /* ── AI ── */
-.ai-loading { color: var(--text-muted); font-size: 14px; font-style: italic; padding: 8px 0; }
+.ai-loading { color: var(--text-muted); font-size: 14px; padding: 8px 0; }
+.ai-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ai-status-title { color: var(--text); font-weight: 700; }
+.ai-status-detail { color: var(--text-muted); font-size: 13px; }
+
+.ai-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--accent-red);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
+}
+.ai-error p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
 
 .ai-advice {
   background: var(--accent-purple); border-radius: 12px; padding: 14px;
@@ -90,6 +186,29 @@
 }
 .chat-bubble.user .chat-text { background: var(--primary); color: white; border-color: var(--primary); }
 .typing { color: var(--text-muted); font-style: italic; }
+.chat-error {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--accent-red);
+  border-top: 1px solid color-mix(in srgb, var(--danger) 25%, var(--border));
+  color: var(--text);
+  font-size: 12px;
+}
+.chat-retry-btn {
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.chat-retry-btn:hover { border-color: var(--danger); }
 .chat-input-row {
   display: flex; gap: 8px; padding: 10px;
   border-top: 1px solid var(--border); background: var(--card);
@@ -236,6 +355,8 @@
 
 [data-theme="dark"] .ai-advice { background: var(--accent-purple); border-color: var(--primary); }
 [data-theme="dark"] .ai-advice p { color: var(--text); }
+[data-theme="dark"] .ai-error,
+[data-theme="dark"] .chat-error { background: var(--accent-red); }
 [data-theme="dark"] .chat-messages { background: var(--bg); }
 [data-theme="dark"] .chat-text { background: var(--card); color: var(--text); border-color: var(--border); }
 [data-theme="dark"] .chat-bubble.user .chat-text { background: var(--primary); color: white; }
@@ -383,6 +504,29 @@
   padding: 16px 24px; border-top: 1px solid var(--border);
 }
 
+.day-detail-modal { max-width: 560px; }
+.day-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 24px 24px;
+}
+.day-detail-entry {
+  border-left: 4px solid var(--entry-color);
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--entry-color) 8%, var(--bg));
+}
+.day-detail-entry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.day-detail-mood { font-weight: 700; color: var(--text); }
+.day-detail-time { color: var(--text-muted); font-size: 12px; font-weight: 700; }
+
 /* ── Dark mode additions ── */
 [data-theme="dark"] .btn-add-mood { border-color: var(--primary); color: var(--primary); }
 [data-theme="dark"] .btn-add-mood:hover { background: var(--accent-purple); }
@@ -393,3 +537,16 @@
 [data-theme="dark"] .score-btn { background: var(--bg); border-color: var(--border); color: var(--text); }
 [data-theme="dark"] .mood-preview { background: color-mix(in srgb, var(--mood-color, var(--primary)) 10%, var(--card)); }
 [data-theme="dark"] .custom-badge { background: var(--accent-purple); color: var(--primary); }
+[data-theme="dark"] .history-filters { background: var(--bg); border-color: var(--border); }
+[data-theme="dark"] .history-day-chip { background: color-mix(in srgb, var(--day-color) 10%, var(--card)); }
+[data-theme="dark"] .day-detail-entry { background: color-mix(in srgb, var(--entry-color) 10%, var(--card)); }
+
+@media (max-width: 640px) {
+  .history-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .history-filters { justify-content: space-between; }
+  .history-filter-btn { flex: 1; }
+  .history-calendar { grid-template-columns: repeat(2, 1fr); }
+}
