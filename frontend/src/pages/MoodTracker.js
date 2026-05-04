@@ -203,6 +203,23 @@ export default function MoodTracker() {
   const [historyRange, setHistoryRange] = useState(14);
   const [selectedDayDetail, setSelectedDayDetail] = useState(null);
 
+  const viewedMonth = new Date(exportYear, exportMonth, 1);
+  const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const isCurrentMonthSelected = viewedMonth.getTime() === currentMonth.getTime();
+  const isAtOrAfterCurrentMonth = viewedMonth.getTime() >= currentMonth.getTime();
+
+  const moveCalendarMonth = (offset) => {
+    const next = new Date(exportYear, exportMonth + offset, 1);
+    const capped = next > currentMonth ? currentMonth : next;
+    setExportMonth(capped.getMonth());
+    setExportYear(capped.getFullYear());
+  };
+
+  const resetCalendarMonth = () => {
+    setExportMonth(now.getMonth());
+    setExportYear(now.getFullYear());
+  };
+
   React.useEffect(() => {
     if (todayAIData?.advice && todayAIData?.moodLabel) {
       chatFnRef.current = createChat(
@@ -760,7 +777,34 @@ export default function MoodTracker() {
                 <h3>🗓️ Mood calendar</h3>
                 <p className="text-muted">Màu mỗi ngày lấy theo check-in mới nhất, có kèm nhãn cảm xúc.</p>
               </div>
-              <span>Tháng {exportMonth + 1}/{exportYear}</span>
+              <div className="mood-calendar-controls" aria-label="Điều hướng tháng mood calendar">
+                <button
+                  type="button"
+                  className="calendar-nav-btn"
+                  onClick={() => moveCalendarMonth(-1)}
+                  aria-label="Xem tháng trước"
+                >
+                  ‹
+                </button>
+                <strong>Tháng {exportMonth + 1}/{exportYear}</strong>
+                <button
+                  type="button"
+                  className="calendar-nav-btn"
+                  onClick={() => moveCalendarMonth(1)}
+                  disabled={isAtOrAfterCurrentMonth}
+                  aria-label="Xem tháng sau"
+                >
+                  ›
+                </button>
+                <button
+                  type="button"
+                  className="calendar-today-btn"
+                  onClick={resetCalendarMonth}
+                  disabled={isCurrentMonthSelected}
+                >
+                  Hôm nay
+                </button>
+              </div>
             </div>
             <div className="mood-calendar-weekdays" aria-hidden="true">
               {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map(day => <span key={day}>{day}</span>)}
