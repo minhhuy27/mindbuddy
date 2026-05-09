@@ -22,6 +22,45 @@ const EMOJI_SUGGESTIONS = [
   '💪','🔥','⚡','🌊','🌈','✨','💫','🎯',
 ];
 
+const JOURNAL_ICON_GROUPS = [
+  {
+    label: 'Mặt cười',
+    icons: ['😀', '😃', '😄', '😁', '😊', '🙂', '😉', '😍', '🥰', '😘', '😋', '😎', '🤩', '🥳', '😇', '🤗'],
+  },
+  {
+    label: 'Tâm trạng',
+    icons: ['😌', '🥲', '😐', '😶', '🙃', '😔', '😞', '😢', '😭', '🥺', '😤', '😡', '😰', '😱', '🤯', '😴'],
+  },
+  {
+    label: 'Cử chỉ',
+    icons: ['👍', '👎', '👌', '✌️', '🤞', '👏', '🙌', '🙏', '💪', '🫶', '🤝', '👀', '💅', '🤌', '🤙', '🫰'],
+  },
+  {
+    label: 'Trái tim',
+    icons: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🩷', '🤍', '🖤', '💕', '💞', '💓', '💗', '💖', '💘', '💝'],
+  },
+  {
+    label: 'Học tập',
+    icons: ['📚', '📖', '📝', '✏️', '📌', '📎', '💡', '🎯', '⏳', '✅', '📅', '🧠', '💻', '🖥️', '🔬', '🏆'],
+  },
+  {
+    label: 'Nghỉ ngơi',
+    icons: ['🌿', '🍃', '☕', '🧋', '🍵', '🛏️', '🎧', '🎵', '🧘', '🚶', '🏃', '🌙', '⭐', '✨', '🌈', '🕯️'],
+  },
+  {
+    label: 'Đồ ăn',
+    icons: ['🍚', '🍜', '🍲', '🍱', '🥗', '🍞', '🥐', '🍔', '🍟', '🍕', '🍰', '🍫', '🍎', '🍓', '🥤', '🍽️'],
+  },
+  {
+    label: 'Hoạt động',
+    icons: ['🏠', '🏫', '🏥', '🚌', '🏍️', '🚗', '🌧️', '☀️', '🌤️', '🎉', '🎁', '🎮', '📱', '💬', '👥', '🆘'],
+  },
+  {
+    label: 'Biểu tượng',
+    icons: ['🔥', '⚡', '💫', '🌊', '💭', '💤', '💦', '💥', '💯', '❗', '❓', '🔔', '🔒', '🔑', '🚩', '🧩'],
+  },
+];
+
 const SCORE_OPTIONS = [
   { value: 5, label: 'Rất tích cực', color: '#55efc4' },
   { value: 4, label: 'Tích cực',     color: '#74b9ff' },
@@ -175,6 +214,8 @@ export default function MoodTracker() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [checkinFeedback, setCheckinFeedback] = useState('');
+  const [showNoteIcons, setShowNoteIcons] = useState(false);
+  const noteTextareaRef = React.useRef(null);
 
   // ── Custom mood modal ──
   const [showModal, setShowModal] = useState(false);
@@ -288,6 +329,30 @@ export default function MoodTracker() {
     setNote('');
     setCauses([]);
     setEditingId(null);
+    setShowNoteIcons(false);
+  };
+
+  const insertNoteIcon = (icon) => {
+    const textarea = noteTextareaRef.current;
+    if (!textarea) {
+      setNote(prev => `${prev}${prev && !prev.endsWith(' ') ? ' ' : ''}${icon} `);
+      return;
+    }
+
+    const start = textarea.selectionStart ?? note.length;
+    const end = textarea.selectionEnd ?? note.length;
+    const before = note.slice(0, start);
+    const after = note.slice(end);
+    const spacingBefore = before && !/\s$/.test(before) ? ' ' : '';
+    const insertText = `${spacingBefore}${icon} `;
+    const nextNote = `${before}${insertText}${after}`;
+
+    setNote(nextNote);
+    window.setTimeout(() => {
+      textarea.focus();
+      const nextPosition = start + insertText.length;
+      textarea.setSelectionRange(nextPosition, nextPosition);
+    }, 0);
   };
 
   const startEdit = (log) => {
@@ -610,8 +675,43 @@ export default function MoodTracker() {
                   </div>
                 </div>
                 <div className="mt-3">
-                  <label className="form-label">Ghi chú thêm</label>
+                  <div className="note-label-row">
+                    <label className="form-label" htmlFor="mood-note-input">Ghi chú thêm</label>
+                    <button
+                      type="button"
+                      className={`note-icon-toggle ${showNoteIcons ? 'active' : ''}`}
+                      onClick={() => setShowNoteIcons(v => !v)}
+                      aria-expanded={showNoteIcons}
+                      aria-controls="journal-icon-picker"
+                    >
+                      ✨ Chèn icon
+                    </button>
+                  </div>
+                  {showNoteIcons && (
+                    <div className="journal-icon-picker" id="journal-icon-picker">
+                      {JOURNAL_ICON_GROUPS.map(group => (
+                        <div className="journal-icon-group" key={group.label}>
+                          <span>{group.label}</span>
+                          <div className="journal-icon-row">
+                            {group.icons.map(icon => (
+                              <button
+                                key={`${group.label}-${icon}`}
+                                type="button"
+                                className="journal-icon-btn"
+                                onClick={() => insertNoteIcon(icon)}
+                                aria-label={`Chèn icon ${icon} vào ghi chú`}
+                              >
+                                {icon}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <textarea
+                    id="mood-note-input"
+                    ref={noteTextareaRef}
                     value={note}
                     onChange={e => {
                       setNote(e.target.value);
