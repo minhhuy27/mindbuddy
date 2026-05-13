@@ -1,92 +1,343 @@
-.community-page { display: flex; flex-direction: column; }
-.community-layout { display: grid; grid-template-columns: 1fr 320px; gap: 24px; align-items: start; }
-.main-section { display: flex; flex-direction: column; }
-.side-section { display: flex; flex-direction: column; gap: 16px; }
-
-.view-tabs { display: flex; gap: 8px; }
-.view-tab {
-  flex: 1; padding: 10px; border-radius: 10px; border: none;
-  cursor: pointer; font-size: 14px; font-weight: 600;
-  background: transparent; color: var(--text-muted); transition: all 0.2s;
-}
-.view-tab.active { background: var(--primary); color: white; }
-
-.confession-map { padding: 0; overflow: hidden; border-radius: 16px; }
-.map-area {
-  position: relative;
-  height: 400px;
-  min-height: 300px;
-  background: var(--map-gradient);
-  overflow: hidden;
-  transition: background 0.3s;
+.community-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
-.map-pin {
-  position: absolute;
-  transform: translate(-50%, -100%);
-  /* Giới hạn pin không bị tràn ra ngoài map */
-  max-width: 200px;
-  z-index: 1;
+.community-hero {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 12%, var(--card)), var(--card)),
+    radial-gradient(circle at 88% 12%, color-mix(in srgb, var(--success) 18%, transparent), transparent 30%);
 }
-.map-pin:hover { z-index: 10; }
-.pin-bubble {
-  background: var(--card); border-radius: 12px; padding: 10px 12px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15); max-width: 200px;
-  font-size: 12px; line-height: 1.4; margin-bottom: 4px;
+
+.community-kicker {
+  display: inline-block;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.community-hero h2 {
+  margin-bottom: 6px;
+}
+
+.personal-space-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+  align-items: start;
+}
+
+.main-section,
+.side-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.release-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.section-heading h3,
+.future-letter-card h3,
+.letters-list-card h3,
+.buddy-card h3 {
+  margin-bottom: 6px;
+}
+
+.prompt-shuffle {
   border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 7px 12px;
+  white-space: nowrap;
 }
-.pin-bubble p { margin-bottom: 6px; }
-.pin-actions { display: flex; align-items: center; justify-content: space-between; }
-.pin-dot { width: 10px; height: 10px; background: var(--primary); border-radius: 50%; margin: 0 auto; }
-.pin-time { font-size: 10px; color: var(--text-muted); }
 
-.hug-btn {
-  background: var(--accent-pink); border: 1px solid #fd79a8; border-radius: 20px;
-  padding: 3px 8px; font-size: 11px; cursor: pointer; transition: all 0.2s;
+.prompt-shuffle:hover {
+  border-color: var(--primary);
+  background: var(--accent-purple);
 }
-.hug-btn:hover { background: #fd79a8; color: white; }
 
-.confession-list { display: flex; flex-direction: column; gap: 12px; }
-.confession-card { padding: 16px; }
-.confession-text { font-size: 15px; line-height: 1.6; margin-bottom: 12px; }
-.confession-footer { display: flex; align-items: center; justify-content: space-between; }
-.hug-btn-lg {
-  background: var(--accent-pink); border: 1.5px solid #fd79a8; border-radius: 20px;
-  padding: 6px 16px; font-size: 13px; cursor: pointer; font-weight: 600; transition: all 0.2s;
+.release-prompt {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 800;
 }
-.hug-btn-lg:hover { background: #fd79a8; color: white; }
 
-.buddy-card { text-align: center; }
-.buddy-result { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.buddy-avatar { font-size: 48px; }
-.buddy-name { font-size: 18px; font-weight: 700; color: var(--primary); }
-.buddy-challenge { background: var(--bg); border-radius: 12px; padding: 12px; width: 100%; text-align: center; }
+.release-card textarea,
+.future-letter-card textarea {
+  resize: vertical;
+}
 
-.challenge-item { margin-bottom: 16px; }
-.challenge-name { font-size: 14px; font-weight: 500; }
-.progress-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
-.progress-fill { height: 100%; background: linear-gradient(90deg, var(--primary), var(--primary-light)); border-radius: 4px; transition: width 0.3s; }
+.release-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.release-actions span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.release-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.release-entry {
+  padding: 18px;
+  border-left: 4px solid var(--primary);
+}
+
+.release-entry p {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  margin-bottom: 12px;
+}
+
+.release-entry-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.release-entry-footer button,
+.letter-item button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 12px;
+}
+
+.release-entry-footer button:hover,
+.letter-item button:hover {
+  border-color: var(--primary);
+  background: var(--accent-purple);
+}
+
+.empty-personal-card {
+  min-height: 210px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.empty-personal-card div {
+  font-size: 38px;
+}
+
+.future-letter-card,
+.letters-list-card,
+.buddy-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.letter-delay-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.letter-delay-row button {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 36px;
+}
+
+.letter-delay-row button.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.letters-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.letters-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.letter-item {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.letter-item.open {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: color-mix(in srgb, var(--primary) 8%, var(--card));
+}
+
+.letter-item > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.letter-item strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.letter-item span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.letter-item p {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.buddy-card {
+  text-align: center;
+}
+
+.buddy-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.buddy-avatar {
+  font-size: 46px;
+}
+
+.buddy-name {
+  color: var(--primary);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.buddy-challenge {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  width: 100%;
+  text-align: center;
+}
+
+.buddy-challenge p {
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.buddy-progress {
+  width: 100%;
+}
+
+.progress-bar {
+  height: 8px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--primary-light));
+  border-radius: inherit;
+  transition: width 0.3s;
+}
 
 @media (max-width: 900px) {
-  .community-layout { grid-template-columns: 1fr; }
-  .map-area { height: 320px; }
-  .pin-bubble { max-width: 150px; font-size: 11px; }
+  .personal-space-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .section-heading,
+  .release-actions,
+  .release-entry-footer,
+  .letter-item > div {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .letter-delay-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ===== DARK MODE ===== */
-[data-theme="dark"] .view-tab { color: var(--text-muted); }
-[data-theme="dark"] .view-tab.active { color: white; }
+[data-theme="dark"] .community-hero {
+  background: linear-gradient(135deg, rgba(183,176,255,0.12), var(--card));
+}
 
-[data-theme="dark"] .pin-bubble { background: var(--card); border-color: var(--border); color: var(--text); }
-[data-theme="dark"] .pin-time { color: var(--text-muted); }
-[data-theme="dark"] .pin-dot { background: var(--primary); }
+[data-theme="dark"] .prompt-shuffle,
+[data-theme="dark"] .release-entry-footer button,
+[data-theme="dark"] .letter-item button,
+[data-theme="dark"] .letter-delay-row button,
+[data-theme="dark"] .letter-item,
+[data-theme="dark"] .buddy-challenge {
+  background: var(--bg);
+  border-color: var(--border);
+}
 
-[data-theme="dark"] .hug-btn { background: var(--accent-pink); border-color: rgba(253,121,168,0.4); color: var(--text); }
-[data-theme="dark"] .hug-btn:hover { background: #fd79a8; color: white; }
-[data-theme="dark"] .hug-btn-lg { background: var(--accent-pink); border-color: rgba(253,121,168,0.4); color: var(--text); }
-[data-theme="dark"] .hug-btn-lg:hover { background: #fd79a8; color: white; }
+[data-theme="dark"] .letter-delay-row button.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
 
-[data-theme="dark"] .confession-text { color: var(--text); }
-[data-theme="dark"] .buddy-name { color: var(--primary); }
-[data-theme="dark"] .buddy-challenge { background: var(--bg); color: var(--text); }
-[data-theme="dark"] .challenge-name { color: var(--text); }
+[data-theme="dark"] .letter-item.open {
+  background: var(--accent-purple);
+  border-color: var(--primary);
+}

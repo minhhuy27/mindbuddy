@@ -18,7 +18,7 @@ export const BADGES = [
   { id: 'week_streak', name: 'Chiến binh bền bỉ', icon: '⚔️', desc: '7 ngày liên tiếp' },
   { id: 'pomodoro_master', name: 'Bậc thầy tập trung', icon: '🍅', desc: 'Hoàn thành 10 pomodoro' },
   { id: 'meditation_master', name: 'Bậc thầy thiền định', icon: '🧘', desc: 'Thiền 5 lần' },
-  { id: 'community_helper', name: 'Người truyền cảm hứng', icon: '💝', desc: 'Gửi 10 lời động viên' },
+  { id: 'community_helper', name: 'Tự nâng đỡ', icon: '💝', desc: 'Tự ôm mình trong góc nhẹ lòng' },
 ];
 
 const DEFAULT_DATA = {
