@@ -16,6 +16,11 @@ const GOALS = [
   { id: 'study', label: 'Tập trung học tập', desc: 'Ưu tiên năng lượng, Pomodoro và kế hoạch học.' },
 ];
 
+function getFirstName(user) {
+  const source = user?.displayName || user?.email || 'bạn';
+  return source.split('@')[0].split(' ')[0];
+}
+
 export default function Dashboard() {
   const {
     user, moodLogs, MOODS, pomodoroCount, gardenLevel, earnedBadges, BADGES,
@@ -26,23 +31,38 @@ export default function Dashboard() {
   const [quickFeedback, setQuickFeedback] = React.useState('');
   const [showCrisis, setShowCrisis] = React.useState(false);
 
+  const today = new Date();
+  const todayStr = today.toDateString();
+  const todayLogs = moodLogs.filter(l => new Date(l.date).toDateString() === todayStr);
+  const latestTodayMood = todayLogs[0];
+  const latestMood = latestTodayMood ? MOODS.find(m => m.id === latestTodayMood.mood) : null;
+  const latestMoodScore = latestMood?.score || 0;
+  const currentGoal = GOALS.find(g => g.id === userGoal) || GOALS[0];
+
   const last7 = Array.from({ length: 7 }, (_, i) => {
-    const d = subDays(new Date(), 6 - i);
+    const d = subDays(today, 6 - i);
     const dayStr = d.toDateString();
-    // Lấy log mới nhất trong ngày (moodLogs đã sort mới nhất trước)
     const log = moodLogs.find(l => new Date(l.date).toDateString() === dayStr);
+    const mood = log ? MOODS.find(m => m.id === log.mood) : null;
     return {
       date: format(d, 'EEE', { locale: vi }),
-      score: log ? (MOODS.find(m => m.id === log.mood)?.score ?? 0) : null,
+      fullDate: format(d, 'dd/MM'),
+      score: mood?.score ?? null,
       hasData: !!log,
+      mood,
     };
   });
 
+  const weekLogs = last7.filter(d => d.hasData);
+  const weekAverage = weekLogs.length
+    ? (weekLogs.reduce((sum, d) => sum + d.score, 0) / weekLogs.length).toFixed(1)
+    : null;
+  const weekDirection = weekLogs.length >= 2
+    ? weekLogs[weekLogs.length - 1].score - weekLogs[0].score
+    : 0;
+
   const streak = getStreak(moodLogs);
   const gardenEmoji = gardenLevel < 20 ? '🌱' : gardenLevel < 50 ? '🌿' : gardenLevel < 80 ? '🌳' : '🌸';
-  const todayLogs = moodLogs.filter(l => new Date(l.date).toDateString() === new Date().toDateString());
-  const latestTodayMood = todayLogs[0]; // moodLogs đã sort mới nhất trước
-  const latestMood = latestTodayMood ? MOODS.find(m => m.id === latestTodayMood.mood) : null;
   const nextPomodoro = Math.max(0, 10 - pomodoroCount);
   const pomodoroProgress = Math.min(100, (pomodoroCount / 10) * 100);
   const streakProgress = Math.min(100, (streak / 7) * 100);
@@ -51,39 +71,85 @@ export default function Dashboard() {
   const gardenProgress = Math.min(100, gardenLevel);
   const badgeProgress = BADGES.length ? Math.min(100, (earnedBadges.length / BADGES.length) * 100) : 0;
 
+  const nextAction = (() => {
+    if (!latestTodayMood) {
+      return {
+        icon: '💭',
+        title: 'Ghi cảm xúc đầu tiên hôm nay',
+        text: 'Một check-in ngắn là đủ để MindBuddy hiểu ngày của bạn đang bắt đầu thế nào.',
+        to: '/mood',
+        label: 'Mở trang cảm xúc',
+      };
+    }
+    if (latestMoodScore <= 2) {
+      return {
+        icon: '🫁',
+        title: 'Hạ nhịp trong 2 phút',
+        text: 'Mood gần nhất khá nặng. Hãy mở S.O.S và thử một vòng thở 4-7-8 trước khi làm tiếp.',
+        to: '/sos',
+        label: 'Thở cùng MindBuddy',
+      };
+    }
+    if (userGoal === 'study' && pomodoroCount === 0) {
+      return {
+        icon: '🍅',
+        title: 'Bắt đầu một phiên tập trung',
+        text: 'Bạn đã check-in rồi. Một Pomodoro ngắn sẽ giúp biến trạng thái hiện tại thành hành động.',
+        to: '/pomodoro',
+        label: 'Bắt đầu Pomodoro',
+      };
+    }
+    if (gardenLevel < nextGardenMilestone) {
+      return {
+        icon: gardenEmoji,
+        title: 'Chăm vườn bằng một thói quen nhỏ',
+        text: `Còn ${gardenRemaining}% để tới mốc ${nextGardenMilestone}%. Chọn một việc nhẹ như thở, uống nước hoặc viết vài dòng.`,
+        to: '/garden',
+        label: 'Chăm vườn',
+      };
+    }
+    return {
+      icon: '✨',
+      title: 'Nhìn lại xu hướng tuần này',
+      text: 'Bạn đã có dữ liệu hôm nay. Xem insight để chọn một điều nhỏ cho ngày mai.',
+      to: '/mood',
+      label: 'Xem lịch sử',
+    };
+  })();
+
   const handleQuickCheckin = async () => {
     if (!quickMood) return;
     if (detectDanger(quickNote)) setShowCrisis(true);
     await addMoodLog(quickMood, quickNote);
     setQuickMood(null);
     setQuickNote('');
-    setQuickFeedback('Đã ghi cảm xúc nhanh. Bạn có thể xem chi tiết trong trang Cảm xúc.');
+    setQuickFeedback('Đã ghi lại hôm nay. Bạn có thể bổ sung chi tiết trong trang Cảm xúc.');
     window.setTimeout(() => setQuickFeedback(''), 3200);
   };
 
   return (
     <div className="dashboard">
-      <section className="dashboard-hero">
-        <div className="hero-copy">
-          <span className="hero-kicker">MindBuddy hôm nay</span>
-          <h1>Xin chào, {user?.displayName || user?.email}!</h1>
+      <section className="today-hero">
+        <div className="today-hero-copy">
+          <span className="today-date">{format(today, "EEEE, dd/MM/yyyy", { locale: vi })}</span>
+          <h1>Hôm nay của {getFirstName(user)}</h1>
           <p>
             {latestTodayMood
-              ? <>Bạn đã check-in <strong>{todayLogs.length}</strong> lần hôm nay. Lần gần nhất: <strong>{latestMood?.label}</strong> {latestMood?.emoji}</>
-              : 'Bắt đầu bằng một check-in ngắn để MindBuddy hiểu trạng thái hiện tại của bạn.'}
+              ? <>Bạn đã check-in <strong>{todayLogs.length}</strong> lần. Trạng thái mới nhất là <strong>{latestMood?.label}</strong> {latestMood?.emoji}.</>
+              : 'Bắt đầu bằng một check-in ngắn, rồi chọn một việc nhỏ đủ làm ngay.'}
           </p>
-          <Link to="/mood" className="btn btn-primary hero-cta" aria-label={latestTodayMood ? 'Ghi thêm cảm xúc hôm nay' : 'Ghi cảm xúc đầu tiên hôm nay'}>
-            {latestTodayMood ? '+ Ghi thêm cảm xúc' : 'Ghi cảm xúc hôm nay'}
-          </Link>
         </div>
-        <div className="hero-status">
-          <div className="hero-status-icon">{latestMood?.emoji || '💭'}</div>
+
+        <div className="today-hero-status" aria-label="Tóm tắt hôm nay">
+          <div className="today-mood-orb" style={{ '--mood-color': latestMood?.color || '#a29bfe' }}>
+            {latestMood?.emoji || '💭'}
+          </div>
           <div>
-            <span className="hero-status-label">Trạng thái gần nhất</span>
+            <span>Trạng thái gần nhất</span>
             <strong>{latestMood?.label || 'Chưa check-in'}</strong>
           </div>
-          <div className="hero-status-meta">
-            <span>{streak} ngày liên tiếp</span>
+          <div className="today-mini-metrics">
+            <span>{streak} ngày streak</span>
             <span>{gardenLevel}% vườn</span>
           </div>
         </div>
@@ -91,15 +157,16 @@ export default function Dashboard() {
 
       {showCrisis && <CrisisPanel onDismiss={() => setShowCrisis(false)} />}
 
-      <section className="dashboard-focus-grid">
-        <div className="card quick-checkin-widget">
+      <section className="today-grid">
+        <div className="card today-checkin-card">
           <div className="section-heading-row">
             <div>
-              <h3>Ghi cảm xúc nhanh</h3>
-              <p className="text-muted">Chọn mood và ghi một dòng ngắn ngay trên Dashboard.</p>
+              <h3>Check-in nhanh</h3>
+              <p className="text-muted">Chọn cảm xúc hiện tại và ghi một dòng nếu bạn muốn.</p>
             </div>
-            <Link to="/mood" className="quick-link">Mở đầy đủ</Link>
+            <Link to="/mood" className="quick-link">Ghi đầy đủ</Link>
           </div>
+
           <div className="quick-mood-row">
             {MOODS.map(m => (
               <button
@@ -115,54 +182,80 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
+
           <textarea
             value={quickNote}
             onChange={e => {
               setQuickNote(e.target.value);
               if (detectDanger(e.target.value)) setShowCrisis(true);
             }}
-            rows={2}
-            placeholder="Điều gì đang diễn ra?"
+            rows={3}
+            placeholder="Điều gì đang ảnh hưởng tới bạn hôm nay?"
             aria-label="Ghi chú cảm xúc nhanh"
           />
           <button className="btn btn-primary w-full" onClick={handleQuickCheckin} disabled={!quickMood}>
-            Lưu check-in nhanh
+            Lưu check-in hôm nay
           </button>
           {quickFeedback && <p className="quick-feedback" role="status">{quickFeedback}</p>}
         </div>
 
-        <div className="card goal-widget">
-          <div className="section-heading-row">
-            <div>
-              <h3>Mục tiêu cá nhân</h3>
-              <p className="text-muted">MindBuddy sẽ ưu tiên insight và lời khuyên theo mục tiêu này.</p>
-            </div>
+        <aside className="card next-action-card">
+          <span className="next-action-kicker">Việc nhỏ tiếp theo</span>
+          <div className="next-action-icon" aria-hidden="true">{nextAction.icon}</div>
+          <h3>{nextAction.title}</h3>
+          <p>{nextAction.text}</p>
+          <Link to={nextAction.to} className="btn btn-primary w-full">{nextAction.label}</Link>
+          <div className="goal-pill">
+            <span>Mục tiêu hiện tại</span>
+            <strong>{currentGoal.label}</strong>
           </div>
-          <div className="goal-options">
-            {GOALS.map(goal => (
-              <button
-                key={goal.id}
-                className={`goal-option ${userGoal === goal.id ? 'active' : ''}`}
-                onClick={() => setUserGoal(goal.id)}
-                aria-pressed={userGoal === goal.id}
+        </aside>
+      </section>
+
+      <section className="card week-overview-card">
+        <div className="section-heading-row">
+          <div>
+            <h3>Tuần này nhìn nhanh</h3>
+            <p className="text-muted">
+              {weekAverage
+                ? `Điểm mood trung bình ${weekAverage}/5${weekDirection > 0 ? ', đang đi lên.' : weekDirection < 0 ? ', đang giảm nhẹ.' : ', khá ổn định.'}`
+                : 'Chưa đủ dữ liệu để thấy xu hướng.'}
+            </p>
+          </div>
+          <Link to="/mood" className="quick-link">Xem lịch sử</Link>
+        </div>
+
+        <div className="week-strip" aria-label="Cảm xúc 7 ngày qua">
+          {last7.map(day => (
+            <div key={day.fullDate} className={`week-day ${day.hasData ? 'has-data' : ''}`}>
+              <span className="week-label">{day.date}</span>
+              <span
+                className="week-dot"
+                style={{ '--mood-color': day.mood?.color || 'var(--border)' }}
+                title={day.hasData ? `${day.fullDate}: ${day.mood?.label}` : `${day.fullDate}: chưa ghi`}
               >
-                <strong>{goal.label}</strong>
-                <span>{goal.desc}</span>
-              </button>
-            ))}
-          </div>
+                {day.mood?.emoji || ''}
+              </span>
+              <small>{day.fullDate}</small>
+            </div>
+          ))}
         </div>
       </section>
 
-      <div className="quick-actions">
-        <h3 className="mb-3">⚡ Truy cập nhanh</h3>
+      <section className="quick-actions today-tools">
+        <div className="section-heading-row mb-3">
+          <div>
+            <h3>Công cụ cho hôm nay</h3>
+            <p className="text-muted">Các lối tắt bạn có thể dùng ngay trong ngày.</p>
+          </div>
+        </div>
         <div className="actions-grid">
           {[
             { to: '/mood', icon: '💭', label: latestTodayMood ? 'Ghi thêm cảm xúc' : 'Ghi cảm xúc', color: '#a29bfe', primary: true },
-            { to: '/pomodoro', icon: '🍅', label: 'Bắt đầu học', color: '#fd79a8' },
-            { to: '/community', icon: '🌍', label: 'Cộng đồng', color: '#74b9ff' },
-            { to: '/garden', icon: '🌱', label: 'Vườn tâm hồn', color: '#55efc4' },
-            { to: '/sos', icon: '🆘', label: 'Hỗ trợ khẩn cấp', color: '#e17055' },
+            { to: '/pomodoro', icon: '🍅', label: 'Tập trung', color: '#fd79a8' },
+            { to: '/garden', icon: '🌱', label: 'Chăm vườn', color: '#55efc4' },
+            { to: '/community', icon: '🌍', label: 'Góc chia sẻ', color: '#74b9ff' },
+            { to: '/sos', icon: '🆘', label: 'S.O.S', color: '#e17055' },
           ].map(a => (
             <Link key={a.to} to={a.to} className={`action-card ${a.primary ? 'primary-action' : ''}`} style={{ '--action-color': a.color }} aria-label={a.label}>
               <span className="action-icon" aria-hidden="true">{a.icon}</span>
@@ -170,7 +263,7 @@ export default function Dashboard() {
             </Link>
           ))}
         </div>
-      </div>
+      </section>
 
       <div className="stats-grid">
         <div className="stat-card progress-card">
@@ -211,9 +304,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid-2">
-        <div className="card">
-          <h3 className="mb-3">📈 Cảm xúc 7 ngày qua</h3>
+      <section className="dashboard-focus-grid secondary-dashboard-grid">
+        <div className="card mood-chart-card">
+          <h3 className="mb-3">Biểu đồ cảm xúc 7 ngày</h3>
           {moodLogs.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={last7}>
@@ -248,17 +341,39 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="card">
-          <h3 className="mb-3">🏅 Huy hiệu của bạn</h3>
-          <div className="badges-grid">
-            {BADGES.map(b => (
-              <div key={b.id} className={`badge-item ${earnedBadges.includes(b.id) ? 'earned' : 'locked'}`}>
-                <span className="badge-icon">{earnedBadges.includes(b.id) ? b.icon : '🔒'}</span>
-                <span className="badge-name">{b.name}</span>
-                <span className="badge-desc">{b.desc}</span>
-              </div>
+        <div className="card goal-widget">
+          <div className="section-heading-row">
+            <div>
+              <h3>Mục tiêu cá nhân</h3>
+              <p className="text-muted">MindBuddy sẽ ưu tiên insight và lời khuyên theo mục tiêu này.</p>
+            </div>
+          </div>
+          <div className="goal-options">
+            {GOALS.map(goal => (
+              <button
+                key={goal.id}
+                className={`goal-option ${userGoal === goal.id ? 'active' : ''}`}
+                onClick={() => setUserGoal(goal.id)}
+                aria-pressed={userGoal === goal.id}
+              >
+                <strong>{goal.label}</strong>
+                <span>{goal.desc}</span>
+              </button>
             ))}
           </div>
+        </div>
+      </section>
+
+      <div className="card">
+        <h3 className="mb-3">Huy hiệu của bạn</h3>
+        <div className="badges-grid">
+          {BADGES.map(b => (
+            <div key={b.id} className={`badge-item ${earnedBadges.includes(b.id) ? 'earned' : 'locked'}`}>
+              <span className="badge-icon">{earnedBadges.includes(b.id) ? b.icon : '🔒'}</span>
+              <span className="badge-name">{b.name}</span>
+              <span className="badge-desc">{b.desc}</span>
+            </div>
+          ))}
         </div>
       </div>
 
