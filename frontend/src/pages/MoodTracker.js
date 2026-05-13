@@ -11,6 +11,34 @@ import './MoodTracker.css';
 
 const CAUSES = ['Học tập', 'Thi cử', 'Tài chính', 'Bạn bè', 'Gia đình', 'Sức khỏe', 'Tình yêu', 'Khác'];
 
+const METRIC_FIELDS = [
+  { id: 'stress', label: 'Stress', low: 'Rất nhẹ', high: 'Rất căng', invert: true },
+  { id: 'energy', label: 'Năng lượng', low: 'Cạn pin', high: 'Đầy năng lượng' },
+  { id: 'sleep', label: 'Giấc ngủ', low: 'Rất kém', high: 'Rất tốt' },
+  { id: 'focus', label: 'Tập trung', low: 'Rất khó', high: 'Rất rõ' },
+];
+
+const DEFAULT_METRICS = {
+  stress: 3,
+  energy: 3,
+  sleep: 3,
+  focus: 3,
+};
+
+function normalizeMetrics(metrics) {
+  return METRIC_FIELDS.reduce((acc, field) => {
+    const value = Number(metrics?.[field.id]);
+    acc[field.id] = Number.isFinite(value) ? Math.min(5, Math.max(1, value)) : DEFAULT_METRICS[field.id];
+    return acc;
+  }, {});
+}
+
+function metricSummary(metrics) {
+  if (!metrics) return '';
+  const normalized = normalizeMetrics(metrics);
+  return METRIC_FIELDS.map(field => `${field.label}: ${normalized[field.id]}/5`).join(', ');
+}
+
 // Bảng emoji gợi ý cho custom mood
 const EMOJI_SUGGESTIONS = [
   '😤','😡','🤬','😠','😒','🙄','😑','😶',
@@ -207,13 +235,22 @@ export default function MoodTracker() {
   // Tất cả moods = built-in + custom
   const allMoods = [...MOODS, ...(customMoods || [])];
 
+  const [activeTab, setActiveTab] = useState('today');
+  const todayDraftKey = React.useMemo(() => {
+    const uid = user?.uid || user?.email || 'guest';
+    return `mb_mood_draft_${uid}_${format(new Date(), 'yyyy-MM-dd')}`;
+  }, [user?.uid, user?.email]);
+
   // ── Form state ──
   const [selected, setSelected] = useState(null);
   const [note, setNote] = useState('');
   const [causes, setCauses] = useState([]);
+  const [metrics, setMetrics] = useState(DEFAULT_METRICS);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [checkinFeedback, setCheckinFeedback] = useState('');
+  const [draftStatus, setDraftStatus] = useState('');
+  const [draftReady, setDraftReady] = useState(false);
   const [showNoteIcons, setShowNoteIcons] = useState(false);
   const noteTextareaRef = React.useRef(null);
 
@@ -248,6 +285,8 @@ export default function MoodTracker() {
   const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const isCurrentMonthSelected = viewedMonth.getTime() === currentMonth.getTime();
   const isAtOrAfterCurrentMonth = viewedMonth.getTime() >= currentMonth.getTime();
+  const hasMetricDraft = Object.keys(DEFAULT_METRICS).some(key => metrics[key] !== DEFAULT_METRICS[key]);
+  const hasDraftContent = !editingId && (!!selected || note.trim().length > 0 || causes.length > 0 || hasMetricDraft);
 
   const moveCalendarMonth = (offset) => {
     const next = new Date(exportYear, exportMonth + offset, 1);
@@ -275,6 +314,54 @@ export default function MoodTracker() {
     }
   }, [todayAI, userGoal]);
 
+  React.useEffect(() => {
+    setDraftReady(false);
+    setDraftStatus('');
+    try {
+      const raw = localStorage.getItem(todayDraftKey);
+      if (raw) {
+        const draft = JSON.parse(raw);
+        setSelected(draft.selected || null);
+        setNote(draft.note || '');
+        setCauses(Array.isArray(draft.causes) ? draft.causes : []);
+        setMetrics(normalizeMetrics(draft.metrics));
+        setDraftStatus('Đã khôi phục nháp hôm nay.');
+      } else {
+        setSelected(null);
+        setNote('');
+        setCauses([]);
+        setMetrics(DEFAULT_METRICS);
+      }
+    } catch {
+      localStorage.removeItem(todayDraftKey);
+    } finally {
+      setDraftReady(true);
+    }
+  }, [todayDraftKey]);
+
+  React.useEffect(() => {
+    if (!draftReady || editingId) return undefined;
+
+    const timeout = window.setTimeout(() => {
+      if (!selected && !note.trim() && causes.length === 0 && !hasMetricDraft) {
+        localStorage.removeItem(todayDraftKey);
+        setDraftStatus('');
+        return;
+      }
+
+      localStorage.setItem(todayDraftKey, JSON.stringify({
+        selected,
+        note,
+        causes,
+        metrics,
+        savedAt: Date.now(),
+      }));
+      setDraftStatus('Đã tự lưu nháp.');
+    }, 450);
+
+    return () => window.clearTimeout(timeout);
+  }, [selected, note, causes, metrics, hasMetricDraft, editingId, draftReady, todayDraftKey]);
+
   // Tự động tóm tắt ngày hôm qua nếu chưa có trong memory
   React.useEffect(() => {
     const autoSummarizeYesterday = async () => {
@@ -301,6 +388,7 @@ export default function MoodTracker() {
           moodLabel: mood?.label || 'Không rõ',
           note: cleanNote,
           causes: causesInNote,
+          metrics: l.metrics,
         };
       });
 
@@ -324,12 +412,24 @@ export default function MoodTracker() {
     prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]
   );
 
+  const updateMetric = (id, value) => {
+    setMetrics(prev => ({ ...prev, [id]: Number(value) }));
+  };
+
   const resetForm = () => {
     setSelected(null);
     setNote('');
     setCauses([]);
+    setMetrics(DEFAULT_METRICS);
     setEditingId(null);
     setShowNoteIcons(false);
+  };
+
+  const clearDraft = () => {
+    localStorage.removeItem(todayDraftKey);
+    resetForm();
+    setDraftStatus('Đã xóa nháp.');
+    window.setTimeout(() => setDraftStatus(''), 1800);
   };
 
   const insertNoteIcon = (icon) => {
@@ -361,7 +461,9 @@ export default function MoodTracker() {
     setSelected(log.mood);
     setNote(cleanNote);
     setCauses(causesInNote);
+    setMetrics(normalizeMetrics(log.metrics));
     setEditingId(log.id);
+    setActiveTab('today');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -374,6 +476,7 @@ export default function MoodTracker() {
         moodLabel: request.moodLabel,
         note: request.note,
         causes: request.causes,
+        metrics: request.metrics,
         recentMoods: request.recentMoods,
         aiMemory: request.aiMemory,
         userGoal: request.userGoal,
@@ -396,13 +499,14 @@ export default function MoodTracker() {
       const todayLogs = [...moodLogs, {
         mood: request.moodId,
         note: request.fullNote,
+        metrics: request.metrics,
         date: new Date().toISOString(),
       }].filter(l => new Date(l.date).toDateString() === new Date().toDateString());
       const entries = todayLogs.map(l => {
         const m = allMoods.find(x => x.id === l.mood);
         const causesInNote = l.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
         const cleanNote = l.note?.replace(/\s*\[.+\]$/, '') || '';
-        return { moodLabel: m?.label || 'Không rõ', note: cleanNote, causes: causesInNote };
+        return { moodLabel: m?.label || 'Không rõ', note: cleanNote, causes: causesInNote, metrics: l.metrics };
       });
       summarizeDay({ date: todayLabel, entries }).then(summary => {
         if (summary !== null) {
@@ -427,19 +531,21 @@ export default function MoodTracker() {
     const mood = allMoods.find(m => m.id === selected);
     const fullNote = note + (causes.length ? ` [${causes.join(', ')}]` : '');
     if (detectDanger(fullNote)) setShowSOS(true);
+    const currentMetrics = normalizeMetrics(metrics);
 
     if (editingId) {
-      await updateMoodLog(editingId, selected, fullNote);
+      await updateMoodLog(editingId, selected, fullNote, currentMetrics);
       setCheckinFeedback('Đã cập nhật ghi chú cảm xúc.');
       resetForm();
     } else {
-      await addMoodLog(selected, fullNote);
+      await addMoodLog(selected, fullNote, currentMetrics);
       setCheckinFeedback('Đã lưu cảm xúc. Vườn, streak và huy hiệu của bạn đang được cập nhật.');
       resetForm();
     }
     window.setTimeout(() => setCheckinFeedback(''), 3200);
 
     setSaving(false);
+    setActiveTab('insight');
 
     const recentMoods = moodLogs.slice(0, 7)
       .map(l => allMoods.find(m => m.id === l.mood))
@@ -449,6 +555,7 @@ export default function MoodTracker() {
       moodLabel: mood.label,
       note,
       causes,
+      metrics: currentMetrics,
       fullNote,
       recentMoods,
       aiMemory: aiMemory || [],
@@ -581,14 +688,42 @@ export default function MoodTracker() {
 
   const grouped = groupByDay(filteredMoodLogs);
   const visibleGroups = grouped;
+  const todaysLogs = moodLogs.filter(l => new Date(l.date).toDateString() === new Date().toDateString());
+  const moodTabs = [
+    { id: 'today', label: 'Ghi hôm nay', count: todaysLogs.length },
+    { id: 'history', label: 'Lịch sử', count: moodLogs.length },
+    { id: 'insight', label: 'Insight', count: (aiAdvice || aiLoading || aiError) ? 1 : 0 },
+    { id: 'export', label: 'Xuất dữ liệu', count: 0 },
+  ];
 
   return (
     <div className="mood-tracker">
-      <h2 className="mb-4">💭 Theo dõi cảm xúc</h2>
+      <div className="mood-page-header">
+        <div>
+          <h2>💭 Theo dõi cảm xúc</h2>
+          <p className="text-muted">Ghi nhanh hôm nay, xem lại lịch sử, trò chuyện với AI và xuất nhật ký khi cần.</p>
+        </div>
+      </div>
 
-      <div className="tracker-layout">
-        {/* ── CỘT TRÁI: Form ── */}
-        <div className="tracker-form-col">
+      <div className="mood-tabs" role="tablist" aria-label="Các phần trong trang theo dõi cảm xúc">
+        {moodTabs.map(tab => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            className={`mood-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            <span>{tab.label}</span>
+            {tab.count > 0 && <small>{tab.count}</small>}
+          </button>
+        ))}
+      </div>
+
+      <div className="tracker-layout tracker-tabbed-layout">
+        {activeTab === 'today' && (
+        <div className="tracker-form-col tracker-tab-panel">
           <div className="card checkin-card">
             <h3 className="mb-1">
               {editingId ? '✏️ Chỉnh sửa ghi chú' : '+ Ghi cảm xúc mới'}
@@ -674,6 +809,35 @@ export default function MoodTracker() {
                     ))}
                   </div>
                 </div>
+                <div className="mt-4">
+                  <div className="metrics-heading">
+                    <label className="form-label">Chỉ số nhanh</label>
+                    <span>1 thấp • 5 cao</span>
+                  </div>
+                  <div className="metrics-grid">
+                    {METRIC_FIELDS.map(field => (
+                      <div key={field.id} className="metric-slider">
+                        <div className="metric-slider-head">
+                          <strong>{field.label}</strong>
+                          <span>{metrics[field.id]}/5</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="1"
+                          max="5"
+                          step="1"
+                          value={metrics[field.id]}
+                          onChange={e => updateMetric(field.id, e.target.value)}
+                          aria-label={`${field.label} ${metrics[field.id]} trên 5`}
+                        />
+                        <div className="metric-slider-scale">
+                          <small>{field.low}</small>
+                          <small>{field.high}</small>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
                 <div className="mt-3">
                   <div className="note-label-row">
                     <label className="form-label" htmlFor="mood-note-input">Ghi chú thêm</label>
@@ -720,6 +884,16 @@ export default function MoodTracker() {
                     placeholder="Hôm nay có chuyện gì xảy ra..."
                     rows={4}
                   />
+                  {(draftStatus || hasDraftContent) && !editingId && (
+                    <div className="draft-status-row" role="status">
+                      <span>{draftStatus || 'Nháp hôm nay đang được giữ lại.'}</span>
+                      {hasDraftContent && (
+                        <button type="button" onClick={clearDraft}>
+                          Xóa nháp
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <button
                   className="btn btn-primary mt-4 w-full"
@@ -746,9 +920,13 @@ export default function MoodTracker() {
             </div>
           )}
           {showSOS && <CrisisPanel onDismiss={() => setShowSOS(false)} />}
+        </div>
+        )}
 
+        {activeTab === 'insight' && (
+        <div className="tracker-tab-panel insight-tab-panel">
           {/* AI Advice & Chat */}
-          {(aiLoading || aiAdvice || aiError) && (
+          {(aiLoading || aiAdvice || aiError) ? (
             <div className="card mt-4">
               {aiLoading && (
                 <div className="ai-loading ai-status">
@@ -848,11 +1026,23 @@ export default function MoodTracker() {
                 </>
               )}
             </div>
+          ) : (
+            <div className="card insight-empty-card">
+              <div className="empty-timeline">
+                <div style={{ fontSize: 40 }} aria-hidden="true">✨</div>
+                <h3>Chưa có insight hôm nay</h3>
+                <p className="text-muted">Ghi một cảm xúc mới để MindBuddy phân tích và gợi ý bước tiếp theo.</p>
+                <button className="btn btn-primary mt-2" onClick={() => setActiveTab('today')}>
+                  Ghi cảm xúc ngay
+                </button>
+              </div>
+            </div>
           )}
         </div>
+        )}
 
-        {/* ── CỘT PHẢI: Timeline ── */}
-        <div className="tracker-timeline-col">
+        {activeTab === 'history' && (
+        <div className="tracker-timeline-col tracker-tab-panel">
           <div className="history-toolbar card mb-4">
             <div>
               <h3>Lịch sử cảm xúc</h3>
@@ -968,36 +1158,9 @@ export default function MoodTracker() {
           <div className="card">
             <div className="flex justify-between items-center mb-3">
               <h3>📝 Nhật ký cảm xúc</h3>
-              <div className="export-row">
-                <select value={exportMonth} onChange={e => setExportMonth(+e.target.value)}
-                  style={{ width: 'auto', padding: '6px 10px' }}>
-                  {Array.from({ length: 12 }, (_, i) => (
-                    <option key={i} value={i}>Tháng {i + 1}</option>
-                  ))}
-                </select>
-                <select value={exportYear} onChange={e => setExportYear(+e.target.value)}
-                  style={{ width: 'auto', padding: '6px 10px' }}>
-                  {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
-                <button
-                  className="btn btn-primary"
-                  onClick={handleExport}
-                  disabled={!!exporting}
-                  style={{ whiteSpace: 'nowrap' }}
-                  title="Xuất PDF tháng đã chọn"
-                >
-                  {exporting === 'month' ? '⏳' : '📄'} Xuất tháng
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={handleExportAll}
-                  disabled={!!exporting || moodLogs.length === 0}
-                  style={{ whiteSpace: 'nowrap' }}
-                  title="Xuất toàn bộ nhật ký"
-                >
-                  {exporting === 'all' ? '⏳ Đang xuất...' : '📦 Xuất tất cả'}
-                </button>
-              </div>
+              <button className="btn btn-secondary" onClick={() => setActiveTab('export')}>
+                Xuất dữ liệu
+              </button>
             </div>
 
             {moodLogs.length === 0 ? (
@@ -1046,6 +1209,7 @@ export default function MoodTracker() {
                           const mood = allMoods.find(m => m.id === log.mood);
                           const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
                           const causeTags = log.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
+                          const logMetrics = log.metrics ? normalizeMetrics(log.metrics) : null;
                           return (
                             <div key={log.id}
                               className={`timeline-entry ${editingId === log.id ? 'editing' : ''}`}
@@ -1079,6 +1243,15 @@ export default function MoodTracker() {
                                     ))}
                                   </div>
                                 )}
+                                {logMetrics && (
+                                  <div className="entry-metrics" aria-label={`Chỉ số phụ: ${metricSummary(logMetrics)}`}>
+                                    {METRIC_FIELDS.map(field => (
+                                      <span key={field.id} className={`entry-metric metric-${field.id}`}>
+                                        {field.label}: {logMetrics[field.id]}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
                                 {cleanNote && <p className="entry-note">{cleanNote}</p>}
                               </div>
                             </div>
@@ -1097,6 +1270,57 @@ export default function MoodTracker() {
             )}
           </div>
         </div>
+        )}
+
+        {activeTab === 'export' && (
+          <div className="tracker-tab-panel export-tab-panel">
+            <div className="card export-panel-card">
+              <div>
+                <h3>Xuất nhật ký cảm xúc</h3>
+                <p className="text-muted">Tạo file PDF để lưu lại hoặc đọc lại ngoài MindBuddy.</p>
+              </div>
+              <div className="export-panel-grid">
+                <div className="export-option">
+                  <h4>Xuất theo tháng</h4>
+                  <p className="text-muted">Phù hợp khi bạn muốn nhìn lại một giai đoạn ngắn.</p>
+                  <div className="export-row">
+                    <select value={exportMonth} onChange={e => setExportMonth(+e.target.value)}>
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i} value={i}>Tháng {i + 1}</option>
+                      ))}
+                    </select>
+                    <select value={exportYear} onChange={e => setExportYear(+e.target.value)}>
+                      {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                  <button
+                    className="btn btn-primary w-full"
+                    onClick={handleExport}
+                    disabled={!!exporting}
+                  >
+                    {exporting === 'month' ? 'Đang xuất...' : 'Xuất PDF tháng'}
+                  </button>
+                </div>
+
+                <div className="export-option">
+                  <h4>Xuất toàn bộ</h4>
+                  <p className="text-muted">Gồm tất cả ghi chú cảm xúc hiện có trong tài khoản.</p>
+                  <div className="export-total">
+                    <strong>{moodLogs.length}</strong>
+                    <span>ghi chú cảm xúc</span>
+                  </div>
+                  <button
+                    className="btn btn-secondary w-full"
+                    onClick={handleExportAll}
+                    disabled={!!exporting || moodLogs.length === 0}
+                  >
+                    {exporting === 'all' ? 'Đang xuất...' : 'Xuất tất cả'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {selectedDayDetail && (
@@ -1111,6 +1335,7 @@ export default function MoodTracker() {
                 const mood = allMoods.find(m => m.id === log.mood);
                 const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
                 const causeTags = log.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
+                const logMetrics = log.metrics ? normalizeMetrics(log.metrics) : null;
                 return (
                   <div key={log.id} className="day-detail-entry" style={{ '--entry-color': mood?.color || '#ccc' }}>
                     <div className="day-detail-entry-head">
@@ -1120,6 +1345,15 @@ export default function MoodTracker() {
                     {causeTags.length > 0 && (
                       <div className="entry-causes">
                         {causeTags.map(t => <span key={t} className="entry-cause-tag">{t}</span>)}
+                      </div>
+                    )}
+                    {logMetrics && (
+                      <div className="entry-metrics">
+                        {METRIC_FIELDS.map(field => (
+                          <span key={field.id} className={`entry-metric metric-${field.id}`}>
+                            {field.label}: {logMetrics[field.id]}
+                          </span>
+                        ))}
                       </div>
                     )}
                     {cleanNote ? <p className="entry-note">{cleanNote}</p> : <p className="entry-note">Không có ghi chú thêm.</p>}
