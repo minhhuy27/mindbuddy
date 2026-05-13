@@ -7,6 +7,24 @@ Luôn đồng cảm, tích cực, thực tế. Không chẩn đoán bệnh. Nế
 Trả lời bằng tiếng Việt, ngắn gọn (dưới 150 từ mỗi tin).
 Khi người dùng nhắc đến cảm xúc trước đây, hãy liên kết với lịch sử đã được cung cấp để phản hồi có chiều sâu hơn.`;
 
+const METRIC_LABELS = {
+  stress: 'stress',
+  energy: 'năng lượng',
+  sleep: 'giấc ngủ',
+  focus: 'tập trung',
+};
+
+function formatMetrics(metrics) {
+  if (!metrics) return 'chưa ghi';
+  return Object.entries(METRIC_LABELS)
+    .map(([key, label]) => {
+      const value = Number(metrics[key]);
+      return Number.isFinite(value) ? `${label}: ${value}/5` : null;
+    })
+    .filter(Boolean)
+    .join(', ') || 'chưa ghi';
+}
+
 function buildMemoryBlock(aiMemory) {
   if (!aiMemory || aiMemory.length === 0) return '';
   const lines = aiMemory
@@ -21,7 +39,7 @@ function buildMemoryBlock(aiMemory) {
 
 // POST /api/ai/analyze — phân tích cảm xúc sau check-in
 router.post('/analyze', async (req, res) => {
-  const { moodLabel, note, causes, recentMoods, aiMemory } = req.body;
+  const { moodLabel, note, causes, metrics, recentMoods, aiMemory } = req.body;
   if (!moodLabel) return res.status(400).json({ error: 'moodLabel is required' });
 
   const recentSummary = recentMoods?.length > 0
@@ -38,10 +56,11 @@ router.post('/analyze', async (req, res) => {
         content: `Tôi vừa ghi cảm xúc:
 - Cảm xúc hiện tại: ${moodLabel}
 - Nguyên nhân: ${causes?.length ? causes.join(', ') : 'không rõ'}
+- Chỉ số phụ: ${formatMetrics(metrics)}
 - Ghi chú: ${note || 'không có'}
 - ${recentSummary}
 
-Hãy: đồng cảm ngắn (1-2 câu, có thể nhắc đến xu hướng từ những ngày trước nếu liên quan), đưa 2-3 lời khuyên thực tế, kết bằng câu động viên.`,
+Hãy: đồng cảm ngắn (1-2 câu, có thể nhắc đến xu hướng từ những ngày trước nếu liên quan), nhận xét nhẹ nếu stress/năng lượng/giấc ngủ/tập trung có điểm đáng chú ý, đưa 2-3 lời khuyên thực tế, kết bằng câu động viên.`,
       },
     ]);
     console.log(`[analyze] provider: ${provider}`);
@@ -103,7 +122,7 @@ router.post('/summarize', async (req, res) => {
   }
 
   const entryText = entries.map((e, i) =>
-    `${i + 1}. Cảm xúc: ${e.moodLabel}${e.causes?.length ? `, nguyên nhân: ${e.causes.join(', ')}` : ''}${e.note ? `, ghi chú: "${e.note}"` : ''}`
+    `${i + 1}. Cảm xúc: ${e.moodLabel}${e.causes?.length ? `, nguyên nhân: ${e.causes.join(', ')}` : ''}${e.metrics ? `, chỉ số: ${formatMetrics(e.metrics)}` : ''}${e.note ? `, ghi chú: "${e.note}"` : ''}`
   ).join('\n');
 
   try {

@@ -118,8 +118,8 @@ export function AppProvider({ children }) {
     if (user) await updateDoc(userRef(user.uid), { gardenLevel: next });
   };
 
-  const addMoodLog = async (mood, note) => {
-    const log = { id: Date.now(), mood, note, date: new Date().toISOString() };
+  const addMoodLog = async (mood, note, metrics = null) => {
+    const log = { id: Date.now(), mood, note, metrics, date: new Date().toISOString() };
     const next = [log, ...data.moodLogs];
     setData(prev => ({ ...prev, moodLogs: next }));
     if (user) await updateDoc(userRef(user.uid), { moodLogs: next });
@@ -134,8 +134,8 @@ export function AppProvider({ children }) {
   };
 
   // Cập nhật một log cụ thể theo id
-  const updateMoodLog = async (id, mood, note) => {
-    const next = data.moodLogs.map(l => l.id === id ? { ...l, mood, note } : l);
+  const updateMoodLog = async (id, mood, note, metrics = null) => {
+    const next = data.moodLogs.map(l => l.id === id ? { ...l, mood, note, metrics } : l);
     setData(prev => ({ ...prev, moodLogs: next }));
     if (user) await updateDoc(userRef(user.uid), { moodLogs: next });
   };
@@ -148,10 +148,10 @@ export function AppProvider({ children }) {
   };
 
   // Giữ lại updateTodayMood để tương thích
-  const updateTodayMood = async (mood, note) => {
+  const updateTodayMood = async (mood, note, metrics = null) => {
     const todayLogs = data.moodLogs.filter(l => new Date(l.date).toDateString() === new Date().toDateString());
     if (todayLogs.length === 0) return;
-    await updateMoodLog(todayLogs[0].id, mood, note);
+    await updateMoodLog(todayLogs[0].id, mood, note, metrics);
   };
 
   const incrementPomodoro = async () => {

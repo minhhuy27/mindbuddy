@@ -25,6 +25,23 @@ function goalText(userGoal) {
   return GOAL_LABELS[userGoal] || userGoal || '';
 }
 
+function formatMetrics(metrics) {
+  if (!metrics) return '';
+  const labels = {
+    stress: 'stress',
+    energy: 'năng lượng',
+    sleep: 'giấc ngủ',
+    focus: 'tập trung',
+  };
+  return Object.entries(labels)
+    .map(([key, label]) => {
+      const value = Number(metrics[key]);
+      return Number.isFinite(value) ? `${label} ${value}/5` : null;
+    })
+    .filter(Boolean)
+    .join(', ');
+}
+
 // Từ khóa nguy hiểm cần phát hiện
 const DANGER_KEYWORDS = [
   'tự tử', 'muốn chết', 'không muốn sống', 'kết thúc tất cả', 'không còn ý nghĩa',
@@ -41,13 +58,13 @@ export function detectDanger(text) {
  * Phân tích cảm xúc sau check-in.
  * aiMemory: [{ date, summary, moods }] — lịch sử các ngày trước
  */
-export async function analyzeMood({ moodLabel, note, causes, recentMoods, aiMemory, userGoal }) {
+export async function analyzeMood({ moodLabel, note, causes, metrics, recentMoods, aiMemory, userGoal }) {
   try {
     const goal = goalText(userGoal);
     const res = await fetchWithTimeout(`${API_BASE}/ai/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ moodLabel, note, causes, recentMoods, aiMemory, userGoal: goal }),
+      body: JSON.stringify({ moodLabel, note, causes, metrics, recentMoods, aiMemory, userGoal: goal }),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -96,7 +113,7 @@ export function createChat(initialAdvice, moodContext, existingMessages = [], ai
 
 /**
  * Tóm tắt 1 ngày để lưu vào aiMemory.
- * entries: [{ moodLabel, note, causes }]
+ * entries: [{ moodLabel, note, causes, metrics }]
  * Trả về chuỗi tóm tắt ngắn.
  */
 export async function summarizeDay({ date, entries }) {
@@ -126,7 +143,8 @@ export async function analyzeWeeklyTrend(moodLogs, MOODS, userGoal) {
     const mood = MOODS.find(m => m.id === l.mood);
     const d = new Date(l.date);
     const days = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
-    return `${days[d.getDay()]} ${d.toLocaleDateString('vi-VN')}: ${mood?.label || ''}${l.note ? ` (${l.note.slice(0, 50)})` : ''}`;
+    const metrics = formatMetrics(l.metrics);
+    return `${days[d.getDay()]} ${d.toLocaleDateString('vi-VN')}: ${mood?.label || ''}${metrics ? ` [${metrics}]` : ''}${l.note ? ` (${l.note.slice(0, 50)})` : ''}`;
   }).join('\n');
 
   const requestKey = `${userGoal || ''}|${recent}`;

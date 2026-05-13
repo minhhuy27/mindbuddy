@@ -1,11 +1,86 @@
 /* ── Layout ── */
 .mood-tracker { display: flex; flex-direction: column; }
 
+.mood-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.mood-page-header h2 { margin-bottom: 6px; }
+
+.mood-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  overflow-x: auto;
+}
+.mood-tab-btn {
+  min-height: 42px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.mood-tab-btn:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+.mood-tab-btn.active {
+  background: var(--primary);
+  color: white;
+}
+.mood-tab-btn small {
+  min-width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  background: rgba(255,255,255,0.22);
+  font-size: 11px;
+}
+
 .tracker-layout {
   display: grid;
   grid-template-columns: 420px 1fr;
   gap: 24px;
   align-items: start;
+}
+
+.tracker-tabbed-layout {
+  grid-template-columns: 1fr;
+}
+.tracker-tab-panel {
+  width: 100%;
+}
+.tracker-tabbed-layout .tracker-form-col {
+  position: static;
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+.tracker-tabbed-layout .checkin-card {
+  max-width: 760px;
+}
+.insight-tab-panel,
+.export-tab-panel {
+  max-width: 920px;
 }
 
 .tracker-form-col {
@@ -46,6 +121,71 @@
 @keyframes feedback-pop {
   from { opacity: 0; transform: translateY(-6px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.draft-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.draft-status-row button {
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 2px 0;
+}
+.draft-status-row button:hover { text-decoration: underline; }
+
+.export-panel-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.export-panel-card h3 { margin-bottom: 4px; }
+.export-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.export-option {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.export-option h4 {
+  font-size: 15px;
+  color: var(--text);
+}
+.export-total {
+  min-height: 74px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.export-total strong {
+  color: var(--primary);
+  font-size: 28px;
+  line-height: 1;
+}
+.export-total span {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 4px;
 }
 
 .history-toolbar {
@@ -267,6 +407,69 @@
 }
 .cause-btn:hover { border-color: var(--primary); }
 .cause-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+.metrics-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.metrics-heading .form-label { margin-bottom: 0; }
+.metrics-heading span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.metric-slider {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  padding: 11px;
+}
+.metric-slider-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.metric-slider-head strong {
+  font-size: 13px;
+  color: var(--text);
+}
+.metric-slider-head span {
+  min-width: 34px;
+  border-radius: 999px;
+  background: var(--accent-purple);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 3px 8px;
+  text-align: center;
+}
+.metric-slider input[type="range"] {
+  padding: 0;
+  border: 0;
+  height: 24px;
+  accent-color: var(--primary);
+  background: transparent;
+}
+.metric-slider-scale {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-muted);
+}
+.metric-slider-scale small {
+  font-size: 10px;
+  line-height: 1.25;
+}
 
 .note-label-row {
   display: flex;
@@ -549,6 +752,42 @@
   border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
 }
 
+.entry-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+.entry-metric {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  font-weight: 700;
+}
+.metric-stress {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  background: color-mix(in srgb, var(--danger) 8%, var(--card));
+}
+.metric-energy {
+  color: #0f8f72;
+  border-color: color-mix(in srgb, var(--success) 50%, var(--border));
+  background: color-mix(in srgb, var(--success) 10%, var(--card));
+}
+.metric-sleep {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: color-mix(in srgb, var(--primary) 8%, var(--card));
+}
+.metric-focus {
+  color: #9a6a00;
+  border-color: color-mix(in srgb, var(--warning) 60%, var(--border));
+  background: color-mix(in srgb, var(--warning) 12%, var(--card));
+}
+
 .entry-note {
   font-size: 13px; color: var(--text-muted); line-height: 1.5;
   margin: 0; white-space: pre-wrap;
@@ -582,6 +821,8 @@
 }
 [data-theme="dark"] .cause-btn { color: var(--text); background: var(--card); border-color: var(--border); }
 [data-theme="dark"] .cause-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+[data-theme="dark"] .metric-slider,
+[data-theme="dark"] .entry-metric { background: var(--bg); border-color: var(--border); }
 [data-theme="dark"] .note-icon-toggle,
 [data-theme="dark"] .journal-icon-btn { background: var(--card); border-color: var(--border); }
 [data-theme="dark"] .journal-icon-picker { background: var(--bg); border-color: var(--border); }
@@ -786,6 +1027,11 @@
 [data-theme="dark"] .mood-preview { background: color-mix(in srgb, var(--mood-color, var(--primary)) 10%, var(--card)); }
 [data-theme="dark"] .custom-badge { background: var(--accent-purple); color: var(--primary); }
 [data-theme="dark"] .history-filters { background: var(--bg); border-color: var(--border); }
+[data-theme="dark"] .mood-tabs { background: var(--card); border-color: var(--border); }
+[data-theme="dark"] .mood-tab-btn:hover { background: var(--card-hover); color: var(--text); }
+[data-theme="dark"] .mood-tab-btn.active { background: var(--primary); color: white; }
+[data-theme="dark"] .export-option,
+[data-theme="dark"] .export-total { background: var(--bg); border-color: var(--border); }
 [data-theme="dark"] .history-day-chip { background: color-mix(in srgb, var(--day-color) 10%, var(--card)); }
 [data-theme="dark"] .calendar-nav-btn,
 [data-theme="dark"] .calendar-today-btn { background: var(--bg); border-color: var(--border); color: var(--text); }
@@ -795,6 +1041,18 @@
 [data-theme="dark"] .checkin-feedback { background: var(--accent-green); border-color: color-mix(in srgb, var(--success) 38%, var(--border)); }
 
 @media (max-width: 640px) {
+  .mood-page-header {
+    flex-direction: column;
+  }
+  .mood-tabs {
+    align-items: stretch;
+  }
+  .mood-tab-btn {
+    flex: 0 0 auto;
+  }
+  .export-panel-grid {
+    grid-template-columns: 1fr;
+  }
   .history-toolbar {
     align-items: stretch;
     flex-direction: column;
@@ -825,5 +1083,8 @@
   .journal-icon-btn {
     width: 100%;
     height: 34px;
+  }
+  .metrics-grid {
+    grid-template-columns: 1fr;
   }
 }
