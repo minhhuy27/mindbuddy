@@ -23,7 +23,7 @@ function getFirstName(user) {
 
 export default function Dashboard() {
   const {
-    user, moodLogs, MOODS, pomodoroCount, gardenLevel, earnedBadges, BADGES,
+    user, moodLogs, MOODS, customMoods, pomodoroCount, gardenLevel, earnedBadges, BADGES,
     getStreak, addMoodLog, userGoal, setUserGoal,
     saveTodayAI, aiMemory, saveAiMemory,
   } = useApp();
@@ -35,10 +35,14 @@ export default function Dashboard() {
   const [selectedDayDetail, setSelectedDayDetail] = React.useState(null);
 
   const today = new Date();
+  const allMoods = React.useMemo(
+    () => [...MOODS, ...(customMoods || [])],
+    [MOODS, customMoods]
+  );
   const todayStr = today.toDateString();
   const todayLogs = moodLogs.filter(l => new Date(l.date).toDateString() === todayStr);
   const latestTodayMood = todayLogs[0];
-  const latestMood = latestTodayMood ? MOODS.find(m => m.id === latestTodayMood.mood) : null;
+  const latestMood = latestTodayMood ? allMoods.find(m => m.id === latestTodayMood.mood) : null;
   const latestMoodScore = latestMood?.score || 0;
   const currentGoal = GOALS.find(g => g.id === userGoal) || GOALS[0];
 
@@ -49,7 +53,7 @@ export default function Dashboard() {
       .filter(l => new Date(l.date).toDateString() === dayStr)
       .sort((a, b) => new Date(b.date) - new Date(a.date));
     const log = dayLogs[0];
-    const mood = log ? MOODS.find(m => m.id === log.mood) : null;
+    const mood = log ? allMoods.find(m => m.id === log.mood) : null;
     return {
       key: dayStr,
       date: format(d, 'EEE', { locale: vi }),
@@ -128,10 +132,10 @@ export default function Dashboard() {
   const handleQuickCheckin = async () => {
     if (!quickMood || quickAnalyzing) return;
     if (detectDanger(quickNote)) setShowCrisis(true);
-    const mood = MOODS.find(m => m.id === quickMood);
+    const mood = allMoods.find(m => m.id === quickMood);
     const note = quickNote;
     const recentMoods = moodLogs.slice(0, 7)
-      .map(l => MOODS.find(m => m.id === l.mood))
+      .map(l => allMoods.find(m => m.id === l.mood))
       .filter(Boolean);
 
     setQuickAnalyzing(true);
@@ -161,7 +165,7 @@ export default function Dashboard() {
         ...moodLogs
           .filter(l => new Date(l.date).toDateString() === new Date().toDateString())
           .map(l => {
-            const m = MOODS.find(x => x.id === l.mood);
+            const m = allMoods.find(x => x.id === l.mood);
             const causesInNote = l.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
             const cleanNote = l.note?.replace(/\s*\[.+\]$/, '') || '';
             return { moodLabel: m?.label || 'Không rõ', note: cleanNote, causes: causesInNote, metrics: l.metrics };
@@ -230,7 +234,7 @@ export default function Dashboard() {
           </div>
 
           <div className="quick-mood-row">
-            {MOODS.map(m => (
+            {allMoods.map(m => (
               <button
                 key={m.id}
                 className={`quick-mood-btn ${quickMood === m.id ? 'selected' : ''}`}
@@ -386,7 +390,7 @@ export default function Dashboard() {
                 <YAxis domain={[0, 5]} hide />
                 <Tooltip formatter={(v, name, props) => {
                   if (!props.payload.hasData) return ['Chưa có dữ liệu', ''];
-                  const m = MOODS.find(m => m.score === v);
+                  const m = props.payload.mood || allMoods.find(m => m.score === v);
                   return [m ? `${m.emoji} ${m.label}` : v, 'Cảm xúc'];
                 }} />
                 <Line
@@ -461,7 +465,7 @@ export default function Dashboard() {
             </div>
             <div className="dashboard-day-list">
               {selectedDayDetail.logs.map(log => {
-                const mood = MOODS.find(m => m.id === log.mood);
+                const mood = allMoods.find(m => m.id === log.mood);
                 const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
                 const causeTags = log.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
                 return (
