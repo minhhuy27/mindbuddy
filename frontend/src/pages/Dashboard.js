@@ -7,7 +7,7 @@ import { vi } from 'date-fns/locale';
 import NotificationSettings from '../components/NotificationSettings';
 import WeeklyInsight from '../components/WeeklyInsight';
 import CrisisPanel from '../components/CrisisPanel';
-import { detectDanger } from '../utils/aiService';
+import { analyzeMood, detectDanger, summarizeDay } from '../utils/aiService';
 import './Dashboard.css';
 
 const GOALS = [
@@ -25,11 +25,14 @@ export default function Dashboard() {
   const {
     user, moodLogs, MOODS, pomodoroCount, gardenLevel, earnedBadges, BADGES,
     getStreak, addMoodLog, userGoal, setUserGoal,
+    saveTodayAI, aiMemory, saveAiMemory,
   } = useApp();
   const [quickMood, setQuickMood] = React.useState(null);
   const [quickNote, setQuickNote] = React.useState('');
   const [quickFeedback, setQuickFeedback] = React.useState('');
+  const [quickAnalyzing, setQuickAnalyzing] = React.useState(false);
   const [showCrisis, setShowCrisis] = React.useState(false);
+  const [selectedDayDetail, setSelectedDayDetail] = React.useState(null);
 
   const today = new Date();
   const todayStr = today.toDateString();
@@ -42,14 +45,19 @@ export default function Dashboard() {
   const last7 = Array.from({ length: 7 }, (_, i) => {
     const d = subDays(today, 6 - i);
     const dayStr = d.toDateString();
-    const log = moodLogs.find(l => new Date(l.date).toDateString() === dayStr);
+    const dayLogs = moodLogs
+      .filter(l => new Date(l.date).toDateString() === dayStr)
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+    const log = dayLogs[0];
     const mood = log ? MOODS.find(m => m.id === log.mood) : null;
     return {
+      key: dayStr,
       date: format(d, 'EEE', { locale: vi }),
       fullDate: format(d, 'dd/MM'),
       score: mood?.score ?? null,
       hasData: !!log,
       mood,
+      logs: dayLogs,
     };
   });
 
@@ -112,18 +120,72 @@ export default function Dashboard() {
       icon: '✨',
       title: 'Nhìn lại xu hướng tuần này',
       text: 'Bạn đã có dữ liệu hôm nay. Xem insight để chọn một điều nhỏ cho ngày mai.',
-      to: '/mood',
+      to: '/mood?tab=history',
       label: 'Xem lịch sử',
     };
   })();
 
   const handleQuickCheckin = async () => {
-    if (!quickMood) return;
+    if (!quickMood || quickAnalyzing) return;
     if (detectDanger(quickNote)) setShowCrisis(true);
-    await addMoodLog(quickMood, quickNote);
+    const mood = MOODS.find(m => m.id === quickMood);
+    const note = quickNote;
+    const recentMoods = moodLogs.slice(0, 7)
+      .map(l => MOODS.find(m => m.id === l.mood))
+      .filter(Boolean);
+
+    setQuickAnalyzing(true);
+    await addMoodLog(quickMood, note);
     setQuickMood(null);
     setQuickNote('');
-    setQuickFeedback('Đã ghi lại hôm nay. Bạn có thể bổ sung chi tiết trong trang Cảm xúc.');
+    setQuickFeedback('Đã ghi lại hôm nay. MindBuddy đang phân tích nhanh cho bạn...');
+
+    try {
+      const advice = await analyzeMood({
+        moodLabel: mood?.label || 'Không rõ',
+        note,
+        causes: [],
+        metrics: null,
+        recentMoods,
+        aiMemory: aiMemory || [],
+        userGoal,
+      });
+
+      if (advice) {
+        saveTodayAI({ advice, moodLabel: mood?.label || '', chatMessages: [] });
+      }
+
+      const todayLabel = format(new Date(), 'dd/MM/yyyy');
+      const todayEntries = [
+        { moodLabel: mood?.label || 'Không rõ', note, causes: [] },
+        ...moodLogs
+          .filter(l => new Date(l.date).toDateString() === new Date().toDateString())
+          .map(l => {
+            const m = MOODS.find(x => x.id === l.mood);
+            const causesInNote = l.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
+            const cleanNote = l.note?.replace(/\s*\[.+\]$/, '') || '';
+            return { moodLabel: m?.label || 'Không rõ', note: cleanNote, causes: causesInNote, metrics: l.metrics };
+          }),
+      ];
+      summarizeDay({ date: todayLabel, entries: todayEntries }).then(summary => {
+        if (summary !== null) {
+          saveAiMemory({
+            date: todayLabel,
+            summary: summary || '',
+            moods: todayEntries.map(e => e.moodLabel),
+          });
+        }
+      });
+
+      setQuickFeedback(advice
+        ? 'Đã ghi lại và tạo lời khuyên AI. Mở tab Insight trong trang Cảm xúc để xem.'
+        : 'Đã ghi lại hôm nay. AI chưa phản hồi được, bạn có thể thử lại trong trang Cảm xúc.');
+    } catch (err) {
+      console.error('Dashboard quick AI error:', err);
+      setQuickFeedback('Đã ghi lại hôm nay. AI đang bận, bạn có thể xem lại trong trang Cảm xúc.');
+    } finally {
+      setQuickAnalyzing(false);
+    }
     window.setTimeout(() => setQuickFeedback(''), 3200);
   };
 
@@ -193,8 +255,8 @@ export default function Dashboard() {
             placeholder="Điều gì đang ảnh hưởng tới bạn hôm nay?"
             aria-label="Ghi chú cảm xúc nhanh"
           />
-          <button className="btn btn-primary w-full" onClick={handleQuickCheckin} disabled={!quickMood}>
-            Lưu check-in hôm nay
+          <button className="btn btn-primary w-full" onClick={handleQuickCheckin} disabled={!quickMood || quickAnalyzing}>
+            {quickAnalyzing ? 'Đang phân tích...' : 'Lưu check-in hôm nay'}
           </button>
           {quickFeedback && <p className="quick-feedback" role="status">{quickFeedback}</p>}
         </div>
@@ -222,12 +284,22 @@ export default function Dashboard() {
                 : 'Chưa đủ dữ liệu để thấy xu hướng.'}
             </p>
           </div>
-          <Link to="/mood" className="quick-link">Xem lịch sử</Link>
+          <Link to="/mood?tab=history" className="quick-link">Xem lịch sử</Link>
         </div>
 
         <div className="week-strip" aria-label="Cảm xúc 7 ngày qua">
           {last7.map(day => (
-            <div key={day.fullDate} className={`week-day ${day.hasData ? 'has-data' : ''}`}>
+            <button
+              key={day.fullDate}
+              type="button"
+              className={`week-day ${day.hasData ? 'has-data' : ''}`}
+              style={{ '--mood-color': day.mood?.color || 'var(--border)' }}
+              disabled={!day.logs.length}
+              onClick={() => setSelectedDayDetail({ dayKey: day.key, logs: day.logs })}
+              aria-label={day.hasData
+                ? `Xem ${day.logs.length} ghi chú ngày ${day.fullDate}, cảm xúc mới nhất ${day.mood?.label}`
+                : `Ngày ${day.fullDate} chưa có ghi chú`}
+            >
               <span className="week-label">{day.date}</span>
               <span
                 className="week-dot"
@@ -237,7 +309,7 @@ export default function Dashboard() {
                 {day.mood?.emoji || ''}
               </span>
               <small>{day.fullDate}</small>
-            </div>
+            </button>
           ))}
         </div>
       </section>
@@ -379,6 +451,38 @@ export default function Dashboard() {
 
       <WeeklyInsight />
       <NotificationSettings />
+
+      {selectedDayDetail && (
+        <div className="dashboard-modal-overlay" onClick={e => e.target === e.currentTarget && setSelectedDayDetail(null)}>
+          <div className="dashboard-day-modal">
+            <div className="dashboard-modal-header">
+              <h3>Chi tiết {format(new Date(selectedDayDetail.dayKey), 'EEEE, dd/MM/yyyy', { locale: vi })}</h3>
+              <button onClick={() => setSelectedDayDetail(null)} aria-label="Đóng chi tiết ngày">×</button>
+            </div>
+            <div className="dashboard-day-list">
+              {selectedDayDetail.logs.map(log => {
+                const mood = MOODS.find(m => m.id === log.mood);
+                const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
+                const causeTags = log.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
+                return (
+                  <div key={log.id} className="dashboard-day-entry" style={{ '--entry-color': mood?.color || '#ccc' }}>
+                    <div className="dashboard-day-entry-head">
+                      <span>{mood?.emoji} {mood?.label || 'Không rõ'}</span>
+                      <strong>{format(new Date(log.date), 'HH:mm')}</strong>
+                    </div>
+                    {causeTags.length > 0 && (
+                      <div className="dashboard-day-causes">
+                        {causeTags.map(tag => <span key={tag}>{tag}</span>)}
+                      </div>
+                    )}
+                    <p>{cleanNote || 'Không có ghi chú thêm.'}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

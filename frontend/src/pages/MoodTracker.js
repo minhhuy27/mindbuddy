@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { format, isToday, isYesterday, subDays } from 'date-fns';
@@ -24,6 +24,12 @@ const DEFAULT_METRICS = {
   sleep: 3,
   focus: 3,
 };
+
+const VALID_TABS = ['today', 'history', 'insight', 'export'];
+
+function normalizeTab(tab) {
+  return VALID_TABS.includes(tab) ? tab : 'today';
+}
 
 function normalizeMetrics(metrics) {
   return METRIC_FIELDS.reduce((acc, field) => {
@@ -235,7 +241,13 @@ export default function MoodTracker() {
   // Tất cả moods = built-in + custom
   const allMoods = [...MOODS, ...(customMoods || [])];
 
-  const [activeTab, setActiveTab] = useState('today');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => normalizeTab(searchParams.get('tab')));
+  const selectTab = React.useCallback((tab) => {
+    const next = normalizeTab(tab);
+    setActiveTab(next);
+    setSearchParams(next === 'today' ? {} : { tab: next }, { replace: true });
+  }, [setSearchParams]);
   const todayDraftKey = React.useMemo(() => {
     const uid = user?.uid || user?.email || 'guest';
     return `mb_mood_draft_${uid}_${format(new Date(), 'yyyy-MM-dd')}`;
@@ -272,6 +284,10 @@ export default function MoodTracker() {
   const [chatOpen, setChatOpen] = useState(true);
   const chatFnRef = React.useRef(null);
   const chatEndRef = React.useRef(null);
+
+  React.useEffect(() => {
+    setActiveTab(normalizeTab(searchParams.get('tab')));
+  }, [searchParams]);
 
   // ── Export state ──
   const now = new Date();
@@ -463,7 +479,7 @@ export default function MoodTracker() {
     setCauses(causesInNote);
     setMetrics(normalizeMetrics(log.metrics));
     setEditingId(log.id);
-    setActiveTab('today');
+    selectTab('today');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -545,7 +561,7 @@ export default function MoodTracker() {
     window.setTimeout(() => setCheckinFeedback(''), 3200);
 
     setSaving(false);
-    setActiveTab('insight');
+    selectTab('insight');
 
     const recentMoods = moodLogs.slice(0, 7)
       .map(l => allMoods.find(m => m.id === l.mood))
@@ -713,7 +729,7 @@ export default function MoodTracker() {
             role="tab"
             aria-selected={activeTab === tab.id}
             className={`mood-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => selectTab(tab.id)}
           >
             <span>{tab.label}</span>
             {tab.count > 0 && <small>{tab.count}</small>}
@@ -1032,7 +1048,7 @@ export default function MoodTracker() {
                 <div style={{ fontSize: 40 }} aria-hidden="true">✨</div>
                 <h3>Chưa có insight hôm nay</h3>
                 <p className="text-muted">Ghi một cảm xúc mới để MindBuddy phân tích và gợi ý bước tiếp theo.</p>
-                <button className="btn btn-primary mt-2" onClick={() => setActiveTab('today')}>
+                <button className="btn btn-primary mt-2" onClick={() => selectTab('today')}>
                   Ghi cảm xúc ngay
                 </button>
               </div>
@@ -1158,7 +1174,7 @@ export default function MoodTracker() {
           <div className="card">
             <div className="flex justify-between items-center mb-3">
               <h3>📝 Nhật ký cảm xúc</h3>
-              <button className="btn btn-secondary" onClick={() => setActiveTab('export')}>
+              <button className="btn btn-secondary" onClick={() => selectTab('export')}>
                 Xuất dữ liệu
               </button>
             </div>
