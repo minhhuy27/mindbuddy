@@ -14,25 +14,85 @@
   display: flex; align-items: center; gap: 24px;
 }
 
-.logo { font-size: 20px; font-weight: 700; color: var(--primary); white-space: nowrap; }
+.logo { font-size: 20px; font-weight: 700; color: var(--primary); white-space: nowrap; text-decoration: none; }
 .logo span { margin-left: 4px; }
 
-.desktop-nav { display: flex; gap: 4px; flex: 1; }
+.desktop-nav { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
 
 .nav-link {
   padding: 8px 12px; border-radius: 10px;
   text-decoration: none; color: var(--text-muted);
   font-size: 13px; font-weight: 500;
   transition: all 0.2s; white-space: nowrap;
+  border: 0; background: transparent; font-family: inherit; cursor: pointer;
 }
 .nav-link:hover { background: var(--bg); color: var(--primary); }
 .nav-link.active { background: var(--accent-purple); color: var(--primary); }
 .nav-link.sos-link { color: var(--danger); }
 .nav-link.sos-link:hover, .nav-link.sos-link.active { background: #ffe8e4; }
 
+.nav-more { position: relative; }
+.nav-more-toggle { display: inline-flex; align-items: center; }
+.nav-more-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 248px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 8px;
+  box-shadow: 0 18px 46px rgba(0,0,0,0.16);
+  z-index: 220;
+}
+.nav-more-menu::before {
+  content: "";
+  position: absolute;
+  top: -10px;
+  right: 24px;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-bottom: 10px solid var(--card);
+}
+.nav-more-item {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 10px;
+  color: var(--text);
+  text-decoration: none;
+}
+.nav-more-item:hover,
+.nav-more-item.active {
+  background: var(--accent-purple);
+  color: var(--primary);
+}
+.nav-more-item > span {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+}
+.nav-more-item strong {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.nav-more-item small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
 .header-right { display: flex; align-items: center; gap: 12px; margin-left: auto; }
 .user-name { font-size: 13px; font-weight: 500; white-space: nowrap; }
-.menu-toggle { display: none; }
+.menu-toggle { display: none; background: none; border: 1.5px solid var(--border); border-radius: 8px; padding: 5px 9px; color: var(--text); cursor: pointer; }
+.header-logout { padding: 6px 14px; font-size: 13px; }
 .dark-toggle {
   background: none; border: 1.5px solid var(--border);
   border-radius: 8px; padding: 4px 8px; font-size: 18px;
@@ -57,12 +117,12 @@
 
 @media (max-width: 768px) {
   .desktop-nav { display: none; }
-  .menu-toggle,
-  .mobile-nav { display: none; }
+  .menu-toggle { display: inline-flex; align-items: center; justify-content: center; }
+  .mobile-nav { display: flex; }
   .user-name { display: none; }
   .header-inner { height: 56px; padding: 0 16px; }
   .header-right { gap: 8px; }
-  .header-right .btn-secondary { display: none; }
+  .header-logout { display: none; }
   .main-content { padding: 16px 16px 88px; }
 
   .bottom-nav {
@@ -72,7 +132,7 @@
     bottom: 0;
     z-index: 120;
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 2px;
     padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
     background: color-mix(in srgb, var(--card) 95%, transparent);
@@ -116,6 +176,12 @@
 [data-theme="dark"] .nav-link.sos-link { color: #ff7675; }
 [data-theme="dark"] .nav-link.sos-link:hover,
 [data-theme="dark"] .nav-link.sos-link.active { background: var(--accent-red); }
+[data-theme="dark"] .nav-more-menu { background: var(--card); border-color: var(--border); box-shadow: 0 18px 46px rgba(0,0,0,0.36); }
+[data-theme="dark"] .nav-more-menu::before { border-bottom-color: var(--card); }
+[data-theme="dark"] .nav-more-item { color: var(--text); }
+[data-theme="dark"] .nav-more-item:hover,
+[data-theme="dark"] .nav-more-item.active { background: var(--card-hover); color: var(--primary); }
+[data-theme="dark"] .nav-more-item > span { background: var(--bg); }
 [data-theme="dark"] .dark-toggle { border-color: var(--border); color: var(--text); }
 [data-theme="dark"] .dark-toggle:hover { background: var(--bg); }
 [data-theme="dark"] .user-name { color: var(--text); }
