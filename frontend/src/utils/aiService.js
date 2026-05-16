@@ -134,6 +134,29 @@ export async function summarizeDay({ date, entries }) {
 }
 
 /**
+ * Tạo bản nhìn lại ngày có cấu trúc.
+ * entries: [{ time, moodLabel, moodScore, note, causes, metrics }]
+ * pomodoros: [{ time, durationMin, focusBefore, focusAfter, afterFeeling, afterNote }]
+ */
+export async function reviewDay({ date, entries, pomodoros, userGoal }) {
+  if ((!entries || entries.length === 0) && (!pomodoros || pomodoros.length === 0)) return null;
+  try {
+    const goal = goalText(userGoal);
+    const res = await fetchWithTimeout(`${API_BASE}/ai/daily-review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, entries, pomodoros, userGoal: goal }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.review || null;
+  } catch (err) {
+    console.error('reviewDay error:', err);
+    return null;
+  }
+}
+
+/**
  * Phân tích xu hướng tuần.
  */
 export async function analyzeWeeklyTrend(moodLogs, MOODS, userGoal) {

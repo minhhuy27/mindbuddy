@@ -3,39 +3,99 @@ import { Link, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import './Layout.css';
 
-const NAV = [
+const PRIMARY_NAV = [
   { path: '/', icon: '🏠', label: 'Trang chủ' },
   { path: '/mood', icon: '💭', label: 'Cảm xúc' },
+  { path: '/needs', icon: '🧭', label: 'Cần gì' },
   { path: '/pomodoro', icon: '🍅', label: 'Pomodoro' },
-  { path: '/community', icon: '🌍', label: 'Cộng đồng' },
-  { path: '/garden', icon: '🌱', label: 'Vườn' },
-  { path: '/sos', icon: '🆘', label: 'S.O.S' },
 ];
+
+const MORE_NAV = [
+  { path: '/daily-review', icon: '🪞', label: 'Nhìn lại' },
+  { path: '/community', icon: '🌍', label: 'Góc riêng' },
+  { path: '/garden', icon: '🌱', label: 'Vườn' },
+];
+
+const SOS_NAV = { path: '/sos', icon: '🆘', label: 'S.O.S' };
+const MOBILE_NAV = [...PRIMARY_NAV, SOS_NAV];
+const ALL_NAV = [...PRIMARY_NAV, ...MORE_NAV, SOS_NAV];
 
 export default function Layout({ children }) {
   const { user, logout, darkMode, setDarkMode } = useApp();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreActive = MORE_NAV.some(item => item.path === location.pathname);
+
+  const closeMenus = () => {
+    setMenuOpen(false);
+    setMoreOpen(false);
+  };
 
   return (
     <div className="layout">
       <header className="header">
         <div className="header-inner">
-          <div className="logo">🧠 <span>MindBuddy</span></div>
-          <nav className="desktop-nav">
-            {NAV.map(n => (
-              <Link key={n.path} to={n.path}
-                className={`nav-link ${location.pathname === n.path ? 'active' : ''} ${n.path === '/sos' ? 'sos-link' : ''}`}>
-                {n.icon} {n.label}
+          <Link to="/" className="logo" onClick={closeMenus}>🧠 <span>MindBuddy</span></Link>
+
+          <nav className="desktop-nav" aria-label="Điều hướng chính">
+            {PRIMARY_NAV.map(item => (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`nav-link ${location.pathname === item.path ? 'active' : ''}`}
+                onClick={closeMenus}
+              >
+                {item.icon} {item.label}
               </Link>
             ))}
+
+            <div className="nav-more">
+              <button
+                type="button"
+                className={`nav-link nav-more-toggle ${moreActive ? 'active' : ''}`}
+                onClick={() => setMoreOpen(open => !open)}
+                aria-expanded={moreOpen}
+                aria-haspopup="menu"
+              >
+                ⋯ Thêm
+              </button>
+              {moreOpen && (
+                <div className="nav-more-menu" role="menu">
+                  {MORE_NAV.map(item => (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      className={`nav-more-item ${location.pathname === item.path ? 'active' : ''}`}
+                      onClick={closeMenus}
+                      role="menuitem"
+                    >
+                      <span>{item.icon}</span>
+                      <div>
+                        <strong>{item.label}</strong>
+                        <small>{item.path === '/daily-review' ? 'Tóm tắt ngày' : item.path === '/community' ? 'Xả lòng, thư tương lai' : 'Thói quen và huy hiệu'}</small>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <Link
+              to={SOS_NAV.path}
+              className={`nav-link sos-link ${location.pathname === SOS_NAV.path ? 'active' : ''}`}
+              onClick={closeMenus}
+            >
+              {SOS_NAV.icon} {SOS_NAV.label}
+            </Link>
           </nav>
+
           <div className="header-right">
             <button className="dark-toggle" onClick={() => setDarkMode(d => !d)} title="Chế độ tối" aria-label={darkMode ? 'Chuyển sang chế độ sáng' : 'Chuyển sang chế độ tối'}>
               {darkMode ? '☀️' : '🌙'}
             </button>
             <span className="user-name">👤 {user?.displayName || user?.email}</span>
-            <button className="btn btn-secondary" style={{ padding: '6px 14px', fontSize: 13 }} onClick={logout}>Đăng xuất</button>
+            <button className="btn btn-secondary header-logout" onClick={logout}>Đăng xuất</button>
             <button className="menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-label="Mở menu điều hướng" aria-expanded={menuOpen}>☰</button>
           </div>
         </div>
@@ -43,22 +103,28 @@ export default function Layout({ children }) {
 
       {menuOpen && (
         <div className="mobile-nav">
-          {NAV.map(n => (
-            <Link key={n.path} to={n.path}
-              className={`mobile-nav-link ${location.pathname === n.path ? 'active' : ''}`}
-              onClick={() => setMenuOpen(false)}>
-              {n.icon} {n.label}
+          {ALL_NAV.map(item => (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`mobile-nav-link ${location.pathname === item.path ? 'active' : ''} ${item.path === '/sos' ? 'sos-link' : ''}`}
+              onClick={closeMenus}
+            >
+              {item.icon} {item.label}
             </Link>
           ))}
         </div>
       )}
 
       <nav className="bottom-nav" aria-label="Điều hướng nhanh">
-        {NAV.map(n => (
-          <Link key={n.path} to={n.path}
-            className={`bottom-nav-link ${location.pathname === n.path ? 'active' : ''} ${n.path === '/sos' ? 'sos-link' : ''}`}>
-            <span className="bottom-nav-icon" aria-hidden="true">{n.icon}</span>
-            <span className="bottom-nav-label">{n.label}</span>
+        {MOBILE_NAV.map(item => (
+          <Link
+            key={item.path}
+            to={item.path}
+            className={`bottom-nav-link ${location.pathname === item.path ? 'active' : ''} ${item.path === '/sos' ? 'sos-link' : ''}`}
+          >
+            <span className="bottom-nav-icon" aria-hidden="true">{item.icon}</span>
+            <span className="bottom-nav-label">{item.label}</span>
           </Link>
         ))}
       </nav>

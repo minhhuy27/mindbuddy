@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
+import DailyReview from './pages/DailyReview';
+import Needs from './pages/Needs';
 import MoodTracker from './pages/MoodTracker';
 import Pomodoro from './pages/Pomodoro';
 import Community from './pages/Community';
@@ -17,6 +19,8 @@ function AppRoutes() {
     <Layout>
       <Routes>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/needs" element={<Needs />} />
+        <Route path="/daily-review" element={<DailyReview />} />
         <Route path="/mood" element={<MoodTracker />} />
         <Route path="/pomodoro" element={<Pomodoro />} />
         <Route path="/community" element={<Community />} />

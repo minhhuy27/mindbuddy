@@ -25,6 +25,21 @@ function formatMetrics(metrics) {
     .join(', ') || 'chưa ghi';
 }
 
+function parseJsonObject(text) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
+}
+
 function buildMemoryBlock(aiMemory) {
   if (!aiMemory || aiMemory.length === 0) return '';
   const lines = aiMemory
@@ -67,6 +82,69 @@ Hãy: đồng cảm ngắn (1-2 câu, có thể nhắc đến xu hướng từ n
     res.json({ content: text, provider });
   } catch (err) {
     console.error('AI analyze error:', err.message);
+    res.status(500).json({ error: 'AI service error' });
+  }
+});
+
+// POST /api/ai/daily-review — tạo bản nhìn lại ngày có cấu trúc
+router.post('/daily-review', async (req, res) => {
+  const { date, entries = [], pomodoros = [], userGoal } = req.body;
+  if ((!entries || entries.length === 0) && (!pomodoros || pomodoros.length === 0)) {
+    return res.status(400).json({ error: 'entries or pomodoros is required' });
+  }
+
+  const entryText = entries.length
+    ? entries.map((e, i) =>
+      `${i + 1}. ${e.time || ''} - cảm xúc: ${e.moodLabel || 'không rõ'}${Number.isFinite(Number(e.moodScore)) ? ` (${e.moodScore}/5)` : ''}${e.causes?.length ? `, nguyên nhân: ${e.causes.join(', ')}` : ''}${e.metrics ? `, chỉ số: ${formatMetrics(e.metrics)}` : ''}${e.note ? `, ghi chú: "${e.note}"` : ''}`
+    ).join('\n')
+    : 'Không có check-in cảm xúc.';
+
+  const pomodoroText = pomodoros.length
+    ? pomodoros.map((p, i) =>
+      `${i + 1}. ${p.time || ''} - ${p.durationMin || 25} phút, tập trung trước: ${p.focusBefore || 'chưa ghi'}/5, sau: ${p.focusAfter || 'chưa ghi'}/5${p.afterFeeling ? `, cảm nhận: ${p.afterFeeling}` : ''}${p.afterNote ? `, ghi chú: "${p.afterNote}"` : ''}`
+    ).join('\n')
+    : 'Không có Pomodoro.';
+
+  try {
+    const { text, provider } = await chat([
+      {
+        role: 'system',
+        content: `Bạn là MindBuddy, trợ lý nhìn lại ngày cho một người dùng cá nhân. Không chẩn đoán bệnh. Trả lời bằng tiếng Việt, ngắn, cụ thể, dịu nhưng thực tế.
+Chỉ trả về JSON hợp lệ, không Markdown, không giải thích ngoài JSON. JSON phải có đúng các khóa:
+{
+  "summary": "1 câu tổng quan ngày hôm nay",
+  "bestMoment": "trả lời câu: Hôm nay mình ổn nhất lúc nào?",
+  "stressor": "trả lời câu: Điều gì làm mình căng hơn?",
+  "tomorrowStep": "một điều nhỏ nên thử ngày mai"
+}`,
+      },
+      {
+        role: 'user',
+        content: `Ngày: ${date}
+Mục tiêu hiện tại: ${userGoal || 'không rõ'}
+
+Check-in:
+${entryText}
+
+Pomodoro:
+${pomodoroText}
+
+Hãy tạo bản nhìn lại ngày dựa trên dữ liệu trên.`,
+      },
+    ], { maxTokens: 420 });
+
+    const parsed = parseJsonObject(text);
+    const review = parsed || {
+      summary: text,
+      bestMoment: '',
+      stressor: '',
+      tomorrowStep: '',
+    };
+
+    console.log(`[daily-review] provider: ${provider}`);
+    res.json({ review, provider });
+  } catch (err) {
+    console.error('AI daily-review error:', err.message);
     res.status(500).json({ error: 'AI service error' });
   }
 });

@@ -328,6 +328,8 @@ export default function Dashboard() {
         <div className="actions-grid">
           {[
             { to: '/mood', icon: '💭', label: latestTodayMood ? 'Ghi thêm cảm xúc' : 'Ghi cảm xúc', color: '#a29bfe', primary: true },
+            { to: '/needs', icon: '🧭', label: 'Mình cần gì?', color: '#00cec9' },
+            { to: '/daily-review', icon: '🪞', label: 'Nhìn lại ngày', color: '#00cec9' },
             { to: '/pomodoro', icon: '🍅', label: 'Tập trung', color: '#fd79a8' },
             { to: '/garden', icon: '🌱', label: 'Chăm vườn', color: '#55efc4' },
             { to: '/community', icon: '🌍', label: 'Góc chia sẻ', color: '#74b9ff' },

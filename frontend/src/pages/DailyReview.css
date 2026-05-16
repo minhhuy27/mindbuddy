@@ -1,0 +1,406 @@
+.daily-review-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.daily-review-hero {
+  min-height: 190px;
+  border-radius: 18px;
+  padding: 28px 30px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: end;
+  color: white;
+  background:
+    linear-gradient(135deg, rgba(61, 90, 254, 0.94), rgba(0, 184, 148, 0.78)),
+    radial-gradient(circle at 90% 15%, rgba(255,255,255,0.28), transparent 25%);
+  box-shadow: var(--shadow);
+}
+
+.daily-review-kicker {
+  display: inline-flex;
+  margin-bottom: 10px;
+  color: rgba(255,255,255,0.78);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.daily-review-hero h1 {
+  color: white;
+  font-size: 32px;
+  line-height: 1.15;
+  text-transform: capitalize;
+}
+
+.daily-review-hero p {
+  max-width: 680px;
+  color: rgba(255,255,255,0.86);
+  margin-top: 10px;
+  line-height: 1.55;
+}
+
+.daily-review-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(86px, 1fr));
+  gap: 10px;
+}
+
+.daily-review-hero-stats div {
+  min-height: 78px;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.14);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px;
+  backdrop-filter: blur(10px);
+}
+
+.daily-review-hero-stats strong {
+  color: white;
+  font-size: 23px;
+}
+
+.daily-review-hero-stats span {
+  color: rgba(255,255,255,0.74);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.daily-review-date-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+}
+
+.daily-review-date-strip button {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-weight: 800;
+  padding: 9px 14px;
+}
+
+.daily-review-date-strip button.active {
+  border-color: var(--primary);
+  background: var(--accent-purple);
+  color: var(--primary);
+}
+
+.daily-review-empty {
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.daily-review-empty h3 {
+  font-size: 22px;
+}
+
+.daily-review-empty p {
+  max-width: 420px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.daily-review-empty-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.daily-review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.daily-review-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.daily-review-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.daily-review-card-head h3 {
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+
+.daily-review-card-head .btn {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.daily-review-summary {
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.daily-review-notice {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.daily-review-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.metric-tile {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
+
+.metric-tile span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.metric-tile strong {
+  display: block;
+  color: var(--text);
+  font-size: 23px;
+}
+
+.metric-tile-bar {
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  margin-top: 10px;
+}
+
+.metric-tile-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), var(--success));
+}
+
+.daily-review-answer-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.review-answer-card {
+  min-height: 170px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.review-answer-card span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.review-answer-card p {
+  color: var(--text);
+  line-height: 1.6;
+  font-size: 15px;
+}
+
+.review-answer-card.best {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--success) 10%, var(--card)), var(--card));
+}
+
+.review-answer-card.pressure {
+  border-color: color-mix(in srgb, var(--warning) 42%, var(--border));
+}
+
+.review-answer-card.next {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 9%, var(--card)), var(--card));
+}
+
+.daily-review-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.daily-review-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.timeline-item {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 12px;
+  position: relative;
+}
+
+.timeline-item time {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  padding-top: 4px;
+}
+
+.timeline-item div {
+  border-left: 4px solid var(--event-color);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--event-color) 9%, var(--bg));
+  padding: 12px 14px;
+}
+
+.timeline-item strong {
+  display: block;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.timeline-item p {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.daily-note-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.daily-note-item {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--note-color);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--note-color) 7%, var(--bg));
+  padding: 13px 14px;
+}
+
+.daily-note-item > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.daily-note-item strong {
+  color: var(--text);
+}
+
+.daily-note-item span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.daily-note-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.daily-note-tags span {
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: var(--accent-purple);
+  color: var(--primary);
+  font-size: 11px;
+}
+
+.daily-note-item p {
+  color: var(--text-muted);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+[data-theme="dark"] .daily-review-hero {
+  background:
+    linear-gradient(135deg, rgba(51, 66, 155, 0.96), rgba(13, 118, 100, 0.82)),
+    radial-gradient(circle at 90% 15%, rgba(255,255,255,0.12), transparent 25%);
+}
+
+[data-theme="dark"] .metric-tile,
+[data-theme="dark"] .review-answer-card,
+[data-theme="dark"] .daily-review-date-strip button {
+  background: var(--card);
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .timeline-item div {
+  background: color-mix(in srgb, var(--event-color, var(--primary)) 10%, var(--card));
+}
+
+[data-theme="dark"] .daily-note-item {
+  background: color-mix(in srgb, var(--note-color, var(--primary)) 10%, var(--card));
+}
+
+@media (max-width: 900px) {
+  .daily-review-hero,
+  .daily-review-grid,
+  .daily-review-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-review-answer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .daily-review-hero {
+    padding: 22px;
+  }
+
+  .daily-review-hero h1 {
+    font-size: 25px;
+  }
+
+  .daily-review-hero-stats,
+  .daily-review-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-review-card-head {
+    flex-direction: column;
+  }
+}
