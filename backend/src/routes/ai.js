@@ -25,19 +25,99 @@ function formatMetrics(metrics) {
     .join(', ') || 'chưa ghi';
 }
 
-function parseJsonObject(text) {
-  if (!text) return null;
+const DAILY_REVIEW_FALLBACK = {
+  summary: 'MindBuddy đã ghi nhận dữ liệu trong ngày này.',
+  bestMoment: 'Chưa có đủ dữ liệu rõ ràng để xác định khoảnh khắc ổn nhất.',
+  stressor: 'Chưa có đủ dữ liệu rõ ràng để xác định điều làm bạn căng hơn.',
+  tomorrowStep: 'Ngày mai hãy thử ghi một check-in ngắn và chọn một việc nhỏ dễ bắt đầu.',
+};
+
+function stripAiNoise(text) {
+  return String(text || '')
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .trim();
+}
+
+function tryParseJson(value) {
+  if (!value) return null;
   try {
-    return JSON.parse(text);
+    const parsed = JSON.parse(value);
+    if (typeof parsed === 'string') return tryParseJson(parsed);
+    return parsed && typeof parsed === 'object' ? parsed : null;
   } catch {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    try {
-      return JSON.parse(match[0]);
-    } catch {
-      return null;
+    return null;
+  }
+}
+
+function extractJsonCandidates(text) {
+  const candidates = [];
+  const source = String(text || '');
+  for (let start = 0; start < source.length; start++) {
+    if (source[start] !== '{') continue;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < source.length; i++) {
+      const ch = source[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (ch === '{') depth++;
+      if (ch === '}') depth--;
+      if (depth === 0) {
+        candidates.push(source.slice(start, i + 1));
+        break;
+      }
     }
   }
+  return candidates;
+}
+
+function asCleanString(value) {
+  if (typeof value !== 'string') return '';
+  return stripAiNoise(value)
+    .replace(/^["']|["']$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeDailyReview(value) {
+  const source = typeof value === 'string' ? parseJsonObject(value) : value;
+  const review = source && typeof source === 'object' ? source : {};
+  return {
+    summary: asCleanString(review.summary) || DAILY_REVIEW_FALLBACK.summary,
+    bestMoment: asCleanString(review.bestMoment) || DAILY_REVIEW_FALLBACK.bestMoment,
+    stressor: asCleanString(review.stressor) || DAILY_REVIEW_FALLBACK.stressor,
+    tomorrowStep: asCleanString(review.tomorrowStep) || DAILY_REVIEW_FALLBACK.tomorrowStep,
+  };
+}
+
+function parseJsonObject(text) {
+  if (!text) return null;
+  const cleaned = stripAiNoise(text);
+  const direct = tryParseJson(cleaned);
+  if (direct) return direct;
+
+  const candidates = extractJsonCandidates(cleaned);
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const parsed = tryParseJson(candidates[i]);
+    if (parsed && (parsed.summary || parsed.bestMoment || parsed.stressor || parsed.tomorrowStep)) {
+      return parsed;
+    }
+  }
+  return null;
 }
 
 function buildMemoryBlock(aiMemory) {
@@ -106,11 +186,12 @@ router.post('/daily-review', async (req, res) => {
     : 'Không có Pomodoro.';
 
   try {
-    const { text, provider } = await chat([
+    const { text, provider } = await chatGemini([
       {
         role: 'system',
         content: `Bạn là MindBuddy, trợ lý nhìn lại ngày cho một người dùng cá nhân. Không chẩn đoán bệnh. Trả lời bằng tiếng Việt, ngắn, cụ thể, dịu nhưng thực tế.
-Chỉ trả về JSON hợp lệ, không Markdown, không giải thích ngoài JSON. JSON phải có đúng các khóa:
+Không được viết quá trình suy nghĩ, không dùng thẻ <think>, không Markdown.
+Chỉ trả về JSON hợp lệ. JSON phải có đúng các khóa:
 {
   "summary": "1 câu tổng quan ngày hôm nay",
   "bestMoment": "trả lời câu: Hôm nay mình ổn nhất lúc nào?",
@@ -129,17 +210,12 @@ ${entryText}
 Pomodoro:
 ${pomodoroText}
 
-Hãy tạo bản nhìn lại ngày dựa trên dữ liệu trên.`,
+Hãy tạo bản nhìn lại ngày dựa trên dữ liệu trên. Trả về JSON ngắn, hoàn chỉnh, không có chữ nào ngoài JSON.`,
       },
-    ], { maxTokens: 420 });
+    ], { maxTokens: 900 });
 
     const parsed = parseJsonObject(text);
-    const review = parsed || {
-      summary: text,
-      bestMoment: '',
-      stressor: '',
-      tomorrowStep: '',
-    };
+    const review = normalizeDailyReview(parsed || text);
 
     console.log(`[daily-review] provider: ${provider}`);
     res.json({ review, provider });
