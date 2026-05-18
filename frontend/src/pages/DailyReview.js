@@ -91,6 +91,98 @@ function buildSignature(entries, pomodoros) {
   });
 }
 
+function stripAiNoise(text) {
+  return String(text || '')
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .trim();
+}
+
+function tryParseJson(value) {
+  if (!value || typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    if (typeof parsed === 'string') return tryParseJson(parsed);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractJsonCandidates(text) {
+  const candidates = [];
+  const source = String(text || '');
+  for (let start = 0; start < source.length; start++) {
+    if (source[start] !== '{') continue;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < source.length; i++) {
+      const ch = source[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (ch === '{') depth++;
+      if (ch === '}') depth--;
+      if (depth === 0) {
+        candidates.push(source.slice(start, i + 1));
+        break;
+      }
+    }
+  }
+  return candidates;
+}
+
+function parseReviewObject(value) {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  const cleaned = stripAiNoise(value);
+  const direct = tryParseJson(cleaned);
+  if (direct) return direct;
+  const candidates = extractJsonCandidates(cleaned);
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const parsed = tryParseJson(candidates[i]);
+    if (parsed && (parsed.summary || parsed.bestMoment || parsed.stressor || parsed.tomorrowStep)) return parsed;
+  }
+  return null;
+}
+
+function cleanReviewField(value) {
+  if (typeof value !== 'string') return '';
+  const cleaned = stripAiNoise(value)
+    .replace(/^["']|["']$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned || /<think/i.test(cleaned)) return '';
+  if (cleaned.startsWith('{') || cleaned.endsWith('}')) return '';
+  return cleaned;
+}
+
+function normalizeReview(value, fallback) {
+  let source = parseReviewObject(value);
+  if (source?.summary && !source.bestMoment && !source.stressor && !source.tomorrowStep) {
+    source = parseReviewObject(source.summary) || source;
+  }
+  source = source && typeof source === 'object' ? source : {};
+  return {
+    summary: cleanReviewField(source.summary) || fallback.summary,
+    bestMoment: cleanReviewField(source.bestMoment) || fallback.bestMoment,
+    stressor: cleanReviewField(source.stressor) || fallback.stressor,
+    tomorrowStep: cleanReviewField(source.tomorrowStep) || fallback.tomorrowStep,
+  };
+}
+
 function buildLocalReview(entries, pomodoros) {
   if (!entries.length && !pomodoros.length) {
     return {
@@ -241,7 +333,10 @@ export default function DailyReview() {
   const cached = dailyReviews?.[selectedDateKey];
   const hasFreshCache = cached?.signature === signature;
   const localReview = React.useMemo(() => buildLocalReview(entries, dayPomodoros), [entries, dayPomodoros]);
-  const review = hasFreshCache ? cached.review : localReview;
+  const review = React.useMemo(
+    () => hasFreshCache ? normalizeReview(cached.review, localReview) : localReview,
+    [cached, hasFreshCache, localReview]
+  );
   const hasData = entries.length > 0 || dayPomodoros.length > 0;
 
   const averages = React.useMemo(() => (
@@ -284,8 +379,9 @@ export default function DailyReview() {
       userGoal,
     });
     if (aiReview) {
+      const normalizedReview = normalizeReview(aiReview, localReview);
       await saveDailyReview(selectedDateKey, {
-        review: aiReview,
+        review: normalizedReview,
         signature,
         source: 'ai',
         savedAt: Date.now(),
@@ -295,7 +391,7 @@ export default function DailyReview() {
       setNotice('AI chưa phản hồi được, MindBuddy đang dùng bản tóm tắt nhanh từ dữ liệu của bạn.');
     }
     setLoading(false);
-  }, [dayPomodoros, entries, hasData, loading, saveDailyReview, selectedDate, selectedDateKey, signature, userGoal]);
+  }, [dayPomodoros, entries, hasData, loading, localReview, saveDailyReview, selectedDate, selectedDateKey, signature, userGoal]);
 
   React.useEffect(() => {
     if (!hasData || hasFreshCache) return;
