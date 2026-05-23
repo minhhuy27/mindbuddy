@@ -301,6 +301,17 @@
   line-height: 1.5;
 }
 
+.daily-timeline-photo,
+.daily-note-photo {
+  width: min(280px, 100%);
+  max-height: 210px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  display: block;
+  margin-top: 10px;
+}
+
 .daily-note-list {
   display: flex;
   flex-direction: column;

@@ -6,6 +6,7 @@ import { format, isToday, isYesterday, subDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { analyzeMood, createChat, detectDanger, summarizeDay } from '../utils/aiService';
 import { exportMoodPDF, exportAllMoodPDF } from '../utils/exportPDF';
+import { uploadMoodImage } from '../utils/imageUpload';
 import CrisisPanel from '../components/CrisisPanel';
 import './MoodTracker.css';
 
@@ -43,6 +44,13 @@ function metricSummary(metrics) {
   if (!metrics) return '';
   const normalized = normalizeMetrics(metrics);
   return METRIC_FIELDS.map(field => `${field.label}: ${normalized[field.id]}/5`).join(', ');
+}
+
+function logImage(log) {
+  if (!log) return null;
+  if (log.image?.url) return log.image;
+  if (log.imageUrl) return { url: log.imageUrl, path: log.imagePath || '', name: 'Ảnh check-in' };
+  return null;
 }
 
 // Bảng emoji gợi ý cho custom mood
@@ -264,7 +272,14 @@ export default function MoodTracker() {
   const [draftStatus, setDraftStatus] = useState('');
   const [draftReady, setDraftReady] = useState(false);
   const [showNoteIcons, setShowNoteIcons] = useState(false);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState('');
+  const [existingImage, setExistingImage] = useState(null);
+  const [removeExistingImage, setRemoveExistingImage] = useState(false);
+  const [imageError, setImageError] = useState('');
+  const [photoLightbox, setPhotoLightbox] = useState(null);
   const noteTextareaRef = React.useRef(null);
+  const imageInputRef = React.useRef(null);
 
   // ── Custom mood modal ──
   const [showModal, setShowModal] = useState(false);
@@ -302,7 +317,8 @@ export default function MoodTracker() {
   const isCurrentMonthSelected = viewedMonth.getTime() === currentMonth.getTime();
   const isAtOrAfterCurrentMonth = viewedMonth.getTime() >= currentMonth.getTime();
   const hasMetricDraft = Object.keys(DEFAULT_METRICS).some(key => metrics[key] !== DEFAULT_METRICS[key]);
-  const hasDraftContent = !editingId && (!!selected || note.trim().length > 0 || causes.length > 0 || hasMetricDraft);
+  const hasImageDraft = !!imageFile;
+  const hasDraftContent = !editingId && (!!selected || note.trim().length > 0 || causes.length > 0 || hasMetricDraft || hasImageDraft);
 
   const moveCalendarMonth = (offset) => {
     const next = new Date(exportYear, exportMonth + offset, 1);
@@ -376,7 +392,7 @@ export default function MoodTracker() {
     }, 450);
 
     return () => window.clearTimeout(timeout);
-  }, [selected, note, causes, metrics, hasMetricDraft, editingId, draftReady, todayDraftKey]);
+  }, [selected, note, causes, metrics, hasMetricDraft, imageFile, editingId, draftReady, todayDraftKey]);
 
   // Tự động tóm tắt ngày hôm qua nếu chưa có trong memory
   React.useEffect(() => {
@@ -439,6 +455,68 @@ export default function MoodTracker() {
     setMetrics(DEFAULT_METRICS);
     setEditingId(null);
     setShowNoteIcons(false);
+    setImageFile(null);
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImagePreview('');
+    setExistingImage(null);
+    setRemoveExistingImage(false);
+    setImageError('');
+    if (imageInputRef.current) imageInputRef.current.value = '';
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+    };
+  }, [imagePreview]);
+
+  React.useEffect(() => {
+    if (!photoLightbox) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setPhotoLightbox(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [photoLightbox]);
+
+  const handleImageSelect = (event) => {
+    const file = event.target.files?.[0];
+    setImageError('');
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setImageError('Vui lòng chọn file ảnh.');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setImageError('Ảnh tối đa 8MB. Hãy chọn ảnh nhỏ hơn.');
+      return;
+    }
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    setRemoveExistingImage(false);
+  };
+
+  const clearSelectedImage = () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImageFile(null);
+    setImagePreview('');
+    setImageError('');
+    if (imageInputRef.current) imageInputRef.current.value = '';
+  };
+
+  const removeImageFromLog = () => {
+    clearSelectedImage();
+    setRemoveExistingImage(true);
+  };
+
+  const openPhotoLightbox = (image, label) => {
+    if (!image?.url) return;
+    setPhotoLightbox({
+      url: image.url,
+      name: image.name || label || 'Ảnh check-in',
+      label: label || 'Ảnh check-in',
+    });
   };
 
   const clearDraft = () => {
@@ -478,6 +556,13 @@ export default function MoodTracker() {
     setNote(cleanNote);
     setCauses(causesInNote);
     setMetrics(normalizeMetrics(log.metrics));
+    setExistingImage(logImage(log));
+    setImageFile(null);
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImagePreview('');
+    setRemoveExistingImage(false);
+    setImageError('');
+    if (imageInputRef.current) imageInputRef.current.value = '';
     setEditingId(log.id);
     selectTab('today');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -544,39 +629,57 @@ export default function MoodTracker() {
   const handleSave = async () => {
     if (!selected || saving) return;
     setSaving(true);
-    const mood = allMoods.find(m => m.id === selected);
-    const fullNote = note + (causes.length ? ` [${causes.join(', ')}]` : '');
+    setImageError('');
+    const moodId = selected;
+    const rawNote = note;
+    const selectedCauses = causes;
+    const mood = allMoods.find(m => m.id === moodId);
+    const fullNote = rawNote + (selectedCauses.length ? ` [${selectedCauses.join(', ')}]` : '');
     if (detectDanger(fullNote)) setShowSOS(true);
     const currentMetrics = normalizeMetrics(metrics);
 
-    if (editingId) {
-      await updateMoodLog(editingId, selected, fullNote, currentMetrics);
-      setCheckinFeedback('Đã cập nhật ghi chú cảm xúc.');
-      resetForm();
-    } else {
-      await addMoodLog(selected, fullNote, currentMetrics);
-      setCheckinFeedback('Đã lưu cảm xúc. Vườn, streak và huy hiệu của bạn đang được cập nhật.');
-      resetForm();
+    try {
+      let imagePayload;
+      if (imageFile) {
+        imagePayload = await uploadMoodImage({ file: imageFile, user });
+      } else if (editingId && removeExistingImage) {
+        imagePayload = null;
+      }
+
+      if (editingId) {
+        await updateMoodLog(editingId, moodId, fullNote, currentMetrics, imagePayload);
+        setCheckinFeedback('Đã cập nhật ghi chú cảm xúc.');
+        resetForm();
+      } else {
+        await addMoodLog(moodId, fullNote, currentMetrics, imagePayload || null);
+        setCheckinFeedback(imagePayload
+          ? 'Đã lưu cảm xúc cùng ảnh check-in.'
+          : 'Đã lưu cảm xúc. Vườn, streak và huy hiệu của bạn đang được cập nhật.');
+        resetForm();
+      }
+      window.setTimeout(() => setCheckinFeedback(''), 3200);
+      setSaving(false);
+      selectTab('insight');
+
+      const recentMoods = moodLogs.slice(0, 7)
+        .map(l => allMoods.find(m => m.id === l.mood))
+        .filter(Boolean);
+      await runMoodAnalysis({
+        moodId,
+        moodLabel: mood.label,
+        note: rawNote,
+        causes: selectedCauses,
+        metrics: currentMetrics,
+        fullNote,
+        recentMoods,
+        aiMemory: aiMemory || [],
+        userGoal,
+      });
+    } catch (err) {
+      console.error('Save mood image/check-in error:', err);
+      setImageError(err.message || 'Không thể lưu ảnh check-in. Vui lòng thử lại.');
+      setSaving(false);
     }
-    window.setTimeout(() => setCheckinFeedback(''), 3200);
-
-    setSaving(false);
-    selectTab('insight');
-
-    const recentMoods = moodLogs.slice(0, 7)
-      .map(l => allMoods.find(m => m.id === l.mood))
-      .filter(Boolean);
-    await runMoodAnalysis({
-      moodId: selected,
-      moodLabel: mood.label,
-      note,
-      causes,
-      metrics: currentMetrics,
-      fullNote,
-      recentMoods,
-      aiMemory: aiMemory || [],
-      userGoal,
-    });
   };
 
   const handleDelete = async (id) => {
@@ -900,6 +1003,33 @@ export default function MoodTracker() {
                     placeholder="Hôm nay có chuyện gì xảy ra..."
                     rows={4}
                   />
+                  <div className="checkin-photo-field">
+                    <div className="photo-field-head">
+                      <div>
+                        <strong>Ảnh check-in</strong>
+                        <span>Thêm một ảnh nhỏ để sau này nhớ ngữ cảnh hơn.</span>
+                      </div>
+                      <button type="button" className="btn-photo-select" onClick={() => imageInputRef.current?.click()}>
+                        📷 Chọn ảnh
+                      </button>
+                    </div>
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageSelect}
+                      hidden
+                    />
+                    {(imagePreview || (!removeExistingImage && existingImage?.url)) && (
+                      <div className="checkin-photo-preview">
+                        <img src={imagePreview || existingImage.url} alt="Ảnh check-in xem trước" />
+                        <button type="button" onClick={imagePreview ? clearSelectedImage : removeImageFromLog}>
+                          Bỏ ảnh
+                        </button>
+                      </div>
+                    )}
+                    {imageError && <p className="photo-error" role="alert">{imageError}</p>}
+                  </div>
                   {(draftStatus || hasDraftContent) && !editingId && (
                     <div className="draft-status-row" role="status">
                       <span>{draftStatus || 'Nháp hôm nay đang được giữ lại.'}</span>
@@ -1226,6 +1356,7 @@ export default function MoodTracker() {
                           const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
                           const causeTags = log.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
                           const logMetrics = log.metrics ? normalizeMetrics(log.metrics) : null;
+                          const image = logImage(log);
                           return (
                             <div key={log.id}
                               className={`timeline-entry ${editingId === log.id ? 'editing' : ''}`}
@@ -1267,6 +1398,16 @@ export default function MoodTracker() {
                                       </span>
                                     ))}
                                   </div>
+                                )}
+                                {image?.url && (
+                                  <button
+                                    type="button"
+                                    className="entry-photo-button"
+                                    onClick={() => openPhotoLightbox(image, `Ảnh check-in lúc ${format(new Date(log.date), 'HH:mm')}`)}
+                                    aria-label={`Xem ảnh check-in lúc ${format(new Date(log.date), 'HH:mm')} ở dạng lớn`}
+                                  >
+                                    <img className="entry-photo" src={image.url} alt={`Ảnh check-in lúc ${format(new Date(log.date), 'HH:mm')}`} />
+                                  </button>
                                 )}
                                 {cleanNote && <p className="entry-note">{cleanNote}</p>}
                               </div>
@@ -1352,6 +1493,7 @@ export default function MoodTracker() {
                 const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
                 const causeTags = log.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
                 const logMetrics = log.metrics ? normalizeMetrics(log.metrics) : null;
+                const image = logImage(log);
                 return (
                   <div key={log.id} className="day-detail-entry" style={{ '--entry-color': mood?.color || '#ccc' }}>
                     <div className="day-detail-entry-head">
@@ -1372,6 +1514,16 @@ export default function MoodTracker() {
                         ))}
                       </div>
                     )}
+                    {image?.url && (
+                      <button
+                        type="button"
+                        className="entry-photo-button"
+                        onClick={() => openPhotoLightbox(image, `Ảnh check-in lúc ${format(new Date(log.date), 'HH:mm')}`)}
+                        aria-label={`Xem ảnh check-in lúc ${format(new Date(log.date), 'HH:mm')} ở dạng lớn`}
+                      >
+                        <img className="day-detail-photo" src={image.url} alt={`Ảnh check-in lúc ${format(new Date(log.date), 'HH:mm')}`} />
+                      </button>
+                    )}
                     {cleanNote ? <p className="entry-note">{cleanNote}</p> : <p className="entry-note">Không có ghi chú thêm.</p>}
                   </div>
                 );
@@ -1387,6 +1539,18 @@ export default function MoodTracker() {
           onClose={() => setShowModal(false)}
           onSave={addCustomMood}
         />
+      )}
+
+      {photoLightbox && (
+        <div className="photo-lightbox-overlay" onClick={e => e.target === e.currentTarget && setPhotoLightbox(null)}>
+          <div className="photo-lightbox" role="dialog" aria-modal="true" aria-label={photoLightbox.label}>
+            <div className="photo-lightbox-header">
+              <span>{photoLightbox.label}</span>
+              <button type="button" onClick={() => setPhotoLightbox(null)} aria-label="Đóng ảnh lớn">×</button>
+            </div>
+            <img src={photoLightbox.url} alt={photoLightbox.label} />
+          </div>
+        </div>
       )}
     </div>
   );
