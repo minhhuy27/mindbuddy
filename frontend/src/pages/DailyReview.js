@@ -370,6 +370,64 @@ export default function DailyReview() {
     return [...moodEvents, ...pomodoroEvents].sort((a, b) => a.sortTime.localeCompare(b.sortTime));
   }, [entries, dayPomodoros]);
 
+  const dayHighlights = React.useMemo(() => {
+    if (!entries.length) {
+      return {
+        topMood: 'Chưa có check-in cảm xúc.',
+        topCause: 'Chưa có nhãn nguyên nhân.',
+        photoSummary: 'Chưa lưu ảnh check-in.',
+        metricSignal: 'Chưa đủ chỉ số phụ.',
+        quote: '',
+      };
+    }
+
+    const moodCounts = entries.reduce((acc, entry) => {
+      const key = `${entry.moodEmoji} ${entry.moodLabel}`.trim();
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    const topMood = Object.entries(moodCounts).sort((a, b) => b[1] - a[1])[0];
+
+    const causeCounts = entries.flatMap(entry => entry.causes || []).reduce((acc, cause) => {
+      acc[cause] = (acc[cause] || 0) + 1;
+      return acc;
+    }, {});
+    const topCauses = Object.entries(causeCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+
+    const photos = entries.filter(entry => entry.imageUrl).length;
+    const metricEntries = entries.flatMap(entry => (
+      Object.entries(entry.metrics || {})
+        .filter(([, value]) => Number.isFinite(Number(value)))
+        .map(([id, value]) => ({
+          id,
+          value: Number(value),
+          time: entry.time,
+        }))
+    ));
+    const fieldLabels = METRIC_FIELDS.reduce((acc, field) => {
+      acc[field.id] = field.label;
+      return acc;
+    }, {});
+    const strongestMetric = metricEntries.sort((a, b) => b.value - a.value)[0];
+    const noteEntry = [...entries]
+      .filter(entry => entry.note)
+      .sort((a, b) => b.note.length - a.note.length)[0];
+
+    return {
+      topMood: topMood ? `${topMood[0]} xuất hiện ${topMood[1]} lần.` : 'Chưa rõ cảm xúc nổi bật.',
+      topCause: topCauses.length
+        ? topCauses.map(([cause, count]) => `${cause}${count > 1 ? ` (${count})` : ''}`).join(', ')
+        : 'Chưa gắn nhãn nguyên nhân nào.',
+      photoSummary: photos ? `${photos} ảnh check-in đã lưu để nhớ ngữ cảnh.` : 'Chưa lưu ảnh check-in.',
+      metricSignal: strongestMetric
+        ? `${fieldLabels[strongestMetric.id] || strongestMetric.id} cao nhất lúc ${strongestMetric.time}: ${strongestMetric.value}/5.`
+        : 'Chưa đủ chỉ số phụ.',
+      quote: noteEntry ? noteEntry.note : '',
+    };
+  }, [entries]);
+
   const generateAiReview = React.useCallback(async (manual = false) => {
     if (!hasData || loading) return;
     setLoading(true);
@@ -506,26 +564,29 @@ export default function DailyReview() {
             </div>
 
             <div className="card daily-review-notes-card">
-              <h3 className="mb-3">Ghi chú trong ngày</h3>
-              {entries.length === 0 ? (
-                <p className="text-muted">Không có ghi chú cảm xúc trong ngày này.</p>
-              ) : (
-                <div className="daily-note-list">
-                  {entries.map(entry => (
-                    <div key={entry.id} className="daily-note-item" style={{ '--note-color': entry.moodColor }}>
-                      <div>
-                        <strong>{entry.moodEmoji} {entry.moodLabel}</strong>
-                        <span>{entry.time}</span>
-                      </div>
-                      {entry.causes.length > 0 && (
-                        <div className="daily-note-tags">
-                          {entry.causes.map(cause => <span key={cause}>{cause}</span>)}
-                        </div>
-                      )}
-                      <p>{entry.note || 'Không có ghi chú thêm.'}</p>
-                      {entry.imageUrl && <img className="daily-note-photo" src={entry.imageUrl} alt={`Ảnh check-in lúc ${entry.time}`} />}
-                    </div>
-                  ))}
+              <h3 className="mb-3">Điểm đáng chú ý</h3>
+              <div className="daily-highlight-list">
+                <div className="daily-highlight-item">
+                  <span>Cảm xúc chính</span>
+                  <strong>{dayHighlights.topMood}</strong>
+                </div>
+                <div className="daily-highlight-item">
+                  <span>Chủ đề lặp lại</span>
+                  <strong>{dayHighlights.topCause}</strong>
+                </div>
+                <div className="daily-highlight-item">
+                  <span>Ngữ cảnh</span>
+                  <strong>{dayHighlights.photoSummary}</strong>
+                </div>
+                <div className="daily-highlight-item">
+                  <span>Tín hiệu chỉ số</span>
+                  <strong>{dayHighlights.metricSignal}</strong>
+                </div>
+              </div>
+              {dayHighlights.quote && (
+                <div className="daily-memory-quote">
+                  <span>Câu ghi nhớ</span>
+                  <p>{dayHighlights.quote}</p>
                 </div>
               )}
             </div>
