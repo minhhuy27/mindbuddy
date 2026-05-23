@@ -8,6 +8,7 @@ import NotificationSettings from '../components/NotificationSettings';
 import WeeklyInsight from '../components/WeeklyInsight';
 import CrisisPanel from '../components/CrisisPanel';
 import { analyzeMood, detectDanger, summarizeDay } from '../utils/aiService';
+import { uploadMoodImage } from '../utils/imageUpload';
 import './Dashboard.css';
 
 const GOALS = [
@@ -33,6 +34,10 @@ export default function Dashboard() {
   const [quickAnalyzing, setQuickAnalyzing] = React.useState(false);
   const [showCrisis, setShowCrisis] = React.useState(false);
   const [selectedDayDetail, setSelectedDayDetail] = React.useState(null);
+  const [quickImageFile, setQuickImageFile] = React.useState(null);
+  const [quickImagePreview, setQuickImagePreview] = React.useState('');
+  const [quickImageError, setQuickImageError] = React.useState('');
+  const quickImageInputRef = React.useRef(null);
 
   const today = new Date();
   const allMoods = React.useMemo(
@@ -129,6 +134,37 @@ export default function Dashboard() {
     };
   })();
 
+  React.useEffect(() => {
+    return () => {
+      if (quickImagePreview) URL.revokeObjectURL(quickImagePreview);
+    };
+  }, [quickImagePreview]);
+
+  const handleQuickImageSelect = (event) => {
+    const file = event.target.files?.[0];
+    setQuickImageError('');
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setQuickImageError('Vui lòng chọn file ảnh.');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setQuickImageError('Ảnh tối đa 8MB.');
+      return;
+    }
+    if (quickImagePreview) URL.revokeObjectURL(quickImagePreview);
+    setQuickImageFile(file);
+    setQuickImagePreview(URL.createObjectURL(file));
+  };
+
+  const clearQuickImage = () => {
+    if (quickImagePreview) URL.revokeObjectURL(quickImagePreview);
+    setQuickImageFile(null);
+    setQuickImagePreview('');
+    setQuickImageError('');
+    if (quickImageInputRef.current) quickImageInputRef.current.value = '';
+  };
+
   const handleQuickCheckin = async () => {
     if (!quickMood || quickAnalyzing) return;
     if (detectDanger(quickNote)) setShowCrisis(true);
@@ -139,9 +175,22 @@ export default function Dashboard() {
       .filter(Boolean);
 
     setQuickAnalyzing(true);
-    await addMoodLog(quickMood, note);
+    setQuickImageError('');
+    let imagePayload = null;
+    try {
+      if (quickImageFile) {
+        imagePayload = await uploadMoodImage({ file: quickImageFile, user, namespace: 'quick-checkins' });
+      }
+    } catch (err) {
+      console.error('Quick image upload error:', err);
+      setQuickImageError(err.message || 'Không thể lưu ảnh check-in.');
+      setQuickAnalyzing(false);
+      return;
+    }
+    await addMoodLog(quickMood, note, null, imagePayload);
     setQuickMood(null);
     setQuickNote('');
+    clearQuickImage();
     setQuickFeedback('Đã ghi lại hôm nay. MindBuddy đang phân tích nhanh cho bạn...');
 
     try {
@@ -259,6 +308,25 @@ export default function Dashboard() {
             placeholder="Điều gì đang ảnh hưởng tới bạn hôm nay?"
             aria-label="Ghi chú cảm xúc nhanh"
           />
+          <div className="quick-photo-field">
+            <input
+              ref={quickImageInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleQuickImageSelect}
+              hidden
+            />
+            <button type="button" className="quick-photo-btn" onClick={() => quickImageInputRef.current?.click()}>
+              📷 Thêm ảnh
+            </button>
+            {quickImagePreview && (
+              <div className="quick-photo-preview">
+                <img src={quickImagePreview} alt="Ảnh check-in xem trước" />
+                <button type="button" onClick={clearQuickImage}>Bỏ ảnh</button>
+              </div>
+            )}
+            {quickImageError && <p className="quick-photo-error" role="alert">{quickImageError}</p>}
+          </div>
           <button className="btn btn-primary w-full" onClick={handleQuickCheckin} disabled={!quickMood || quickAnalyzing}>
             {quickAnalyzing ? 'Đang phân tích...' : 'Lưu check-in hôm nay'}
           </button>
@@ -470,6 +538,7 @@ export default function Dashboard() {
                 const mood = allMoods.find(m => m.id === log.mood);
                 const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
                 const causeTags = log.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
+                const imageUrl = log.image?.url || log.imageUrl;
                 return (
                   <div key={log.id} className="dashboard-day-entry" style={{ '--entry-color': mood?.color || '#ccc' }}>
                     <div className="dashboard-day-entry-head">
@@ -481,6 +550,7 @@ export default function Dashboard() {
                         {causeTags.map(tag => <span key={tag}>{tag}</span>)}
                       </div>
                     )}
+                    {imageUrl && <img className="dashboard-day-photo" src={imageUrl} alt={`Ảnh check-in lúc ${format(new Date(log.date), 'HH:mm')}`} />}
                     <p>{cleanNote || 'Không có ghi chú thêm.'}</p>
                   </div>
                 );

@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { auth, db } from '../firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, increment } from 'firebase/firestore';
+import { deleteObject, ref as storageRef } from 'firebase/storage';
+import { storage } from '../firebase';
 
 const AppContext = createContext();
 
@@ -119,8 +121,26 @@ export function AppProvider({ children }) {
     if (user) await updateDoc(userRef(user.uid), { gardenLevel: next });
   };
 
-  const addMoodLog = async (mood, note, metrics = null) => {
-    const log = { id: Date.now(), mood, note, metrics, date: new Date().toISOString() };
+  const formatImageFields = (image) => {
+    if (!image) return {};
+    return {
+      image,
+      imageUrl: image.url || '',
+      imagePath: image.path || '',
+    };
+  };
+
+  const deleteMoodImage = async (path) => {
+    if (!path) return;
+    try {
+      await deleteObject(storageRef(storage, path));
+    } catch (err) {
+      console.warn('Xóa ảnh check-in thất bại:', err.message);
+    }
+  };
+
+  const addMoodLog = async (mood, note, metrics = null, image = null) => {
+    const log = { id: Date.now(), mood, note, metrics, ...formatImageFields(image), date: new Date().toISOString() };
     const next = [log, ...data.moodLogs];
     setData(prev => ({ ...prev, moodLogs: next }));
     if (user) await updateDoc(userRef(user.uid), { moodLogs: next });
@@ -135,24 +155,39 @@ export function AppProvider({ children }) {
   };
 
   // Cập nhật một log cụ thể theo id
-  const updateMoodLog = async (id, mood, note, metrics = null) => {
-    const next = data.moodLogs.map(l => l.id === id ? { ...l, mood, note, metrics } : l);
+  const updateMoodLog = async (id, mood, note, metrics = null, image) => {
+    const current = data.moodLogs.find(l => l.id === id);
+    const next = data.moodLogs.map(l => {
+      if (l.id !== id) return l;
+      const base = { ...l, mood, note, metrics };
+      if (image === undefined) return base;
+      if (image === null) {
+        const { image: _image, imageUrl: _imageUrl, imagePath: _imagePath, ...withoutImage } = base;
+        return withoutImage;
+      }
+      return { ...base, ...formatImageFields(image) };
+    });
     setData(prev => ({ ...prev, moodLogs: next }));
     if (user) await updateDoc(userRef(user.uid), { moodLogs: next });
+    if ((image === null || image?.path) && current?.imagePath && current.imagePath !== image?.path) {
+      deleteMoodImage(current.imagePath);
+    }
   };
 
   // Xóa một log theo id
   const deleteMoodLog = async (id) => {
+    const current = data.moodLogs.find(l => l.id === id);
     const next = data.moodLogs.filter(l => l.id !== id);
     setData(prev => ({ ...prev, moodLogs: next }));
     if (user) await updateDoc(userRef(user.uid), { moodLogs: next });
+    if (current?.imagePath) deleteMoodImage(current.imagePath);
   };
 
   // Giữ lại updateTodayMood để tương thích
-  const updateTodayMood = async (mood, note, metrics = null) => {
+  const updateTodayMood = async (mood, note, metrics = null, image) => {
     const todayLogs = data.moodLogs.filter(l => new Date(l.date).toDateString() === new Date().toDateString());
     if (todayLogs.length === 0) return;
-    await updateMoodLog(todayLogs[0].id, mood, note, metrics);
+    await updateMoodLog(todayLogs[0].id, mood, note, metrics, image);
   };
 
   const incrementPomodoro = async () => {

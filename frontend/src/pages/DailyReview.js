@@ -325,6 +325,7 @@ export default function DailyReview() {
         note: cleanNote(log.note || ''),
         causes: extractCauses(log.note || ''),
         metrics: normalizeMetrics(log.metrics),
+        imageUrl: log.image?.url || log.imageUrl || '',
       };
     })
   ), [dayLogs, allMoods]);
@@ -354,6 +355,7 @@ export default function DailyReview() {
       title: `${entry.moodEmoji} ${entry.moodLabel}`,
       detail: entry.note || 'Không có ghi chú thêm.',
       color: entry.moodColor,
+      imageUrl: entry.imageUrl,
     }));
     const pomodoroEvents = dayPomodoros.map(session => ({
       type: 'pomodoro',
@@ -496,6 +498,7 @@ export default function DailyReview() {
                     <div>
                       <strong>{event.title}</strong>
                       <p>{event.detail}</p>
+                      {event.imageUrl && <img className="daily-timeline-photo" src={event.imageUrl} alt={`Ảnh check-in lúc ${event.time}`} />}
                     </div>
                   </div>
                 ))}
@@ -520,6 +523,7 @@ export default function DailyReview() {
                         </div>
                       )}
                       <p>{entry.note || 'Không có ghi chú thêm.'}</p>
+                      {entry.imageUrl && <img className="daily-note-photo" src={entry.imageUrl} alt={`Ảnh check-in lúc ${entry.time}`} />}
                     </div>
                   ))}
                 </div>
