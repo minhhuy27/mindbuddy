@@ -364,6 +364,50 @@
   white-space: pre-wrap;
 }
 
+.daily-highlight-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.daily-highlight-item {
+  min-height: 104px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  padding: 13px;
+}
+
+.daily-highlight-item span,
+.daily-memory-quote span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.daily-highlight-item strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.daily-memory-quote {
+  border: 1px solid color-mix(in srgb, var(--primary) 42%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--bg));
+  padding: 14px;
+  margin-top: 12px;
+}
+
+.daily-memory-quote p {
+  color: var(--text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
 [data-theme="dark"] .daily-review-hero {
   background:
     linear-gradient(135deg, rgba(51, 66, 155, 0.96), rgba(13, 118, 100, 0.82)),
@@ -385,6 +429,14 @@
   background: color-mix(in srgb, var(--note-color, var(--primary)) 10%, var(--card));
 }
 
+[data-theme="dark"] .daily-highlight-item {
+  background: var(--bg);
+}
+
+[data-theme="dark"] .daily-memory-quote {
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+}
+
 @media (max-width: 900px) {
   .daily-review-hero,
   .daily-review-grid,
@@ -393,6 +445,10 @@
   }
 
   .daily-review-answer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-highlight-list {
     grid-template-columns: 1fr;
   }
 }
