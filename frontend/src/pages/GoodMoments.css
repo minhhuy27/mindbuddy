@@ -1,0 +1,473 @@
+.good-moments-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.good-moments-hero {
+  min-height: 210px;
+  border-radius: 18px;
+  padding: 30px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 22px;
+  align-items: end;
+  color: white;
+  background:
+    linear-gradient(135deg, rgba(0, 184, 148, 0.88), rgba(108, 99, 255, 0.88)),
+    radial-gradient(circle at 88% 12%, rgba(255,255,255,0.28), transparent 25%);
+  box-shadow: var(--shadow);
+}
+
+.good-moments-kicker {
+  display: inline-flex;
+  margin-bottom: 10px;
+  color: rgba(255,255,255,0.78);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.good-moments-hero h1 {
+  color: white;
+  font-size: 33px;
+  line-height: 1.15;
+}
+
+.good-moments-hero p {
+  max-width: 660px;
+  color: rgba(255,255,255,0.86);
+  line-height: 1.58;
+  margin-top: 10px;
+}
+
+.good-moments-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(86px, 1fr));
+  gap: 10px;
+}
+
+.good-moments-stats div {
+  min-height: 78px;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.14);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px;
+  backdrop-filter: blur(10px);
+}
+
+.good-moments-stats strong {
+  color: white;
+  font-size: 24px;
+}
+
+.good-moments-stats span {
+  color: rgba(255,255,255,0.74);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.good-moments-empty {
+  min-height: 340px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.good-moments-empty p {
+  max-width: 440px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.good-moments-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.55fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.good-featured-moment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.48fr);
+  gap: 18px;
+  align-items: stretch;
+  overflow: hidden;
+}
+
+.good-featured-moment > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.good-featured-moment span,
+.good-days-card h3 {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.good-featured-moment h3 {
+  font-size: 26px;
+}
+
+.good-featured-moment p {
+  color: var(--text-muted);
+  line-height: 1.6;
+  font-size: 15px;
+}
+
+.good-featured-moment img,
+.featured-placeholder {
+  width: 100%;
+  min-height: 220px;
+  max-height: 280px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  object-fit: cover;
+  background: var(--bg);
+}
+
+.featured-placeholder {
+  display: grid;
+  place-items: center;
+  font-size: 54px;
+  color: var(--primary);
+}
+
+.good-days-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.good-days-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.good-day-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  padding: 12px;
+}
+
+.good-day-row strong,
+.good-day-row span {
+  display: block;
+}
+
+.good-day-row strong {
+  color: var(--text);
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.good-day-row span {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.good-day-row b {
+  color: var(--primary);
+  font-size: 14px;
+}
+
+.good-moments-list-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.good-filter-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.good-filter-tabs button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 8px 11px;
+}
+
+.good-filter-tabs button.active {
+  border-color: var(--primary);
+  background: var(--accent-purple);
+  color: var(--primary);
+}
+
+.good-moment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.good-moment-card {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--moment-color);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--moment-color) 8%, var(--bg));
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.good-moment-card:hover,
+.good-moment-card:focus-visible {
+  border-color: var(--moment-color);
+  box-shadow: 0 10px 26px rgba(108,99,255,0.14);
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.good-moment-card > img {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  display: block;
+}
+
+.good-moment-body {
+  padding: 13px;
+}
+
+.good-moment-body > span {
+  color: var(--text-muted);
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  margin-bottom: 7px;
+}
+
+.good-moment-body strong {
+  color: var(--text);
+  display: block;
+  margin-bottom: 7px;
+}
+
+.good-moment-body p {
+  color: var(--text-muted);
+  display: -webkit-box;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 39px;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.good-signal-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 11px;
+}
+
+.good-signal-row i {
+  border-radius: 999px;
+  background: var(--accent-purple);
+  color: var(--primary);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  padding: 4px 8px;
+}
+
+.good-filter-empty {
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  padding: 18px;
+  text-align: center;
+}
+
+.good-filter-empty strong {
+  color: var(--text);
+}
+
+.good-filter-empty p {
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.good-moment-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0,0,0,0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  backdrop-filter: blur(5px);
+}
+
+.good-moment-modal {
+  width: min(880px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--card);
+  box-shadow: 0 24px 70px rgba(0,0,0,0.32);
+}
+
+.good-modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 24px 14px;
+}
+
+.good-modal-header span {
+  color: var(--text-muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 900;
+  margin-bottom: 5px;
+  text-transform: capitalize;
+}
+
+.good-modal-header h3 {
+  font-size: 20px;
+}
+
+.good-modal-header button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.good-modal-header button:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.good-modal-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 16px;
+  padding: 0 24px 24px;
+}
+
+.good-modal-body > img {
+  width: 100%;
+  max-height: 62vh;
+  object-fit: contain;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #050711;
+}
+
+.good-modal-note {
+  align-self: start;
+  border-left: 4px solid var(--moment-color);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--moment-color) 8%, var(--bg));
+  padding: 16px;
+}
+
+.good-modal-note p {
+  color: var(--text);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.good-cause-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.good-cause-tags span {
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 8px;
+}
+
+[data-theme="dark"] .good-moments-hero {
+  background:
+    linear-gradient(135deg, rgba(13, 118, 100, 0.9), rgba(74, 66, 184, 0.92)),
+    radial-gradient(circle at 88% 12%, rgba(255,255,255,0.12), transparent 25%);
+}
+
+[data-theme="dark"] .good-day-row,
+[data-theme="dark"] .good-filter-tabs button,
+[data-theme="dark"] .good-filter-empty {
+  background: var(--bg);
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .good-moment-card {
+  background: color-mix(in srgb, var(--moment-color) 10%, var(--card));
+}
+
+[data-theme="dark"] .good-modal-note {
+  background: color-mix(in srgb, var(--moment-color) 10%, var(--card));
+}
+
+@media (max-width: 900px) {
+  .good-moments-hero,
+  .good-moments-overview,
+  .good-featured-moment,
+  .good-modal-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .good-moments-hero {
+    padding: 22px;
+  }
+
+  .good-moments-hero h1 {
+    font-size: 26px;
+  }
+
+  .good-moments-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .good-filter-tabs {
+    justify-content: flex-start;
+  }
+}

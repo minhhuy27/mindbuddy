@@ -12,6 +12,109 @@
 }
 .mode-tab.active { background: var(--card); color: var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 
+.smart-pomodoro-card {
+  width: min(560px, 100%);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: 16px;
+  background: var(--bg);
+  padding: 14px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.smart-pomodoro-card.low-focus {
+  border-left-color: var(--primary);
+}
+
+.smart-pomodoro-card.stress {
+  border-left-color: var(--danger);
+}
+
+.smart-pomodoro-card.steady {
+  border-left-color: var(--success);
+}
+
+.smart-pomodoro-card.tired {
+  border-left-color: var(--warning);
+}
+
+.smart-pomodoro-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--card);
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  border: 1px solid var(--border);
+}
+
+.smart-pomodoro-copy span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.smart-pomodoro-copy strong {
+  display: block;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.25;
+  margin-bottom: 5px;
+}
+
+.smart-pomodoro-copy p {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.smart-pomodoro-copy small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+.smart-pomodoro-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.smart-pomodoro-chips i {
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  padding: 3px 8px;
+}
+
+.smart-pomodoro-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 128px;
+}
+
+.smart-pomodoro-actions .btn {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+  text-align: center;
+  text-decoration: none;
+}
+
 .focus-check-card,
 .focus-review-score {
   width: min(420px, 100%);
@@ -220,8 +323,23 @@
   .pomodoro-layout { grid-template-columns: 1fr; }
 }
 
+@media (max-width: 620px) {
+  .smart-pomodoro-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .smart-pomodoro-actions {
+    grid-column: 1 / -1;
+    min-width: 0;
+    flex-direction: row;
+  }
+}
+
 [data-theme="dark"] .mode-tab { color: var(--text-muted); }
 [data-theme="dark"] .mode-tab.active { color: var(--primary); background: #2a2a40; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+[data-theme="dark"] .smart-pomodoro-card,
+[data-theme="dark"] .smart-pomodoro-icon,
+[data-theme="dark"] .smart-pomodoro-chips i,
 [data-theme="dark"] .focus-check-card,
 [data-theme="dark"] .focus-review-score,
 [data-theme="dark"] .focus-summary span,

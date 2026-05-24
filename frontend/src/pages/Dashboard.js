@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { format, subDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import NotificationSettings from '../components/NotificationSettings';
@@ -17,9 +17,38 @@ const GOALS = [
   { id: 'study', label: 'Tập trung học tập', desc: 'Ưu tiên năng lượng, Pomodoro và kế hoạch học.' },
 ];
 
+const ENERGY_BUCKETS = [
+  { id: 'morning', label: 'Sáng', short: 'Sáng', range: '05:00-11:59' },
+  { id: 'afternoon', label: 'Chiều', short: 'Chiều', range: '12:00-17:59' },
+  { id: 'evening', label: 'Tối', short: 'Tối', range: '18:00-04:59' },
+];
+
 function getFirstName(user) {
   const source = user?.displayName || user?.email || 'bạn';
   return source.split('@')[0].split(' ')[0];
+}
+
+function getDayBucket(value) {
+  const date = new Date(value);
+  const hour = Number.isNaN(date.getTime()) ? 12 : date.getHours();
+  if (hour >= 5 && hour < 12) return 'morning';
+  if (hour >= 12 && hour < 18) return 'afternoon';
+  return 'evening';
+}
+
+function averageNumbers(values) {
+  const valid = values.map(Number).filter(Number.isFinite);
+  if (!valid.length) return null;
+  return valid.reduce((sum, value) => sum + value, 0) / valid.length;
+}
+
+function readPomodoroMoodSessions(user) {
+  try {
+    const key = `mb_pomodoro_mood_sessions_${user?.uid || user?.email || 'guest'}`;
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  } catch {
+    return [];
+  }
 }
 
 export default function Dashboard() {
@@ -34,6 +63,7 @@ export default function Dashboard() {
   const [quickAnalyzing, setQuickAnalyzing] = React.useState(false);
   const [showCrisis, setShowCrisis] = React.useState(false);
   const [selectedDayDetail, setSelectedDayDetail] = React.useState(null);
+  const [selectedMemory, setSelectedMemory] = React.useState(null);
   const [quickImageFile, setQuickImageFile] = React.useState(null);
   const [quickImagePreview, setQuickImagePreview] = React.useState('');
   const [quickImageError, setQuickImageError] = React.useState('');
@@ -77,6 +107,98 @@ export default function Dashboard() {
   const weekDirection = weekLogs.length >= 2
     ? weekLogs[weekLogs.length - 1].score - weekLogs[0].score
     : 0;
+
+  const recentPhotoLogs = React.useMemo(() => (
+    moodLogs
+      .map(log => {
+        const mood = allMoods.find(m => m.id === log.mood);
+        const imageUrl = log.image?.url || log.imageUrl;
+        const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
+        const causeTags = log.note?.match(/\[(.+)\]$/)?.[1]?.split(', ') || [];
+        return {
+          ...log,
+          mood,
+          imageUrl,
+          cleanNote,
+          causeTags,
+        };
+      })
+      .filter(log => log.imageUrl)
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .slice(0, 10)
+  ), [allMoods, moodLogs]);
+
+  const pomodoroMoodSessions = React.useMemo(() => readPomodoroMoodSessions(user), [user]);
+
+  const energyMap = React.useMemo(() => {
+    const since = new Date();
+    since.setDate(since.getDate() - 30);
+    const buckets = ENERGY_BUCKETS.reduce((acc, bucket) => {
+      acc[bucket.id] = {
+        ...bucket,
+        stressValues: [],
+        energyValues: [],
+        focusValues: [],
+        pomodoroFocusAfter: [],
+        pomodoroDelta: [],
+      };
+      return acc;
+    }, {});
+
+    moodLogs.forEach(log => {
+      const date = new Date(log.date);
+      if (Number.isNaN(date.getTime()) || date < since || !log.metrics) return;
+      const bucket = buckets[getDayBucket(date)];
+      ['stress', 'energy', 'focus'].forEach(key => {
+        const value = Number(log.metrics?.[key]);
+        if (Number.isFinite(value)) bucket[`${key}Values`].push(Math.min(5, Math.max(1, value)));
+      });
+    });
+
+    pomodoroMoodSessions.forEach(session => {
+      const date = new Date(session.completedAt || session.date);
+      if (Number.isNaN(date.getTime()) || date < since) return;
+      const bucket = buckets[getDayBucket(date)];
+      const focusAfter = Number(session.focusAfter);
+      const focusBefore = Number(session.focusBefore);
+      if (Number.isFinite(focusAfter)) bucket.pomodoroFocusAfter.push(Math.min(5, Math.max(1, focusAfter)));
+      if (Number.isFinite(focusAfter) && Number.isFinite(focusBefore)) bucket.pomodoroDelta.push(focusAfter - focusBefore);
+    });
+
+    const data = ENERGY_BUCKETS.map(bucket => {
+      const item = buckets[bucket.id];
+      const stress = averageNumbers(item.stressValues);
+      const energy = averageNumbers(item.energyValues);
+      const focus = averageNumbers(item.focusValues);
+      const pomodoroFocus = averageNumbers(item.pomodoroFocusAfter);
+      const pomodoroDelta = averageNumbers(item.pomodoroDelta);
+      return {
+        id: bucket.id,
+        label: bucket.label,
+        range: bucket.range,
+        stress: stress ? Number(stress.toFixed(1)) : null,
+        energy: energy ? Number(energy.toFixed(1)) : null,
+        focus: focus ? Number(focus.toFixed(1)) : null,
+        checkins: Math.max(item.stressValues.length, item.energyValues.length, item.focusValues.length),
+        pomodoros: item.pomodoroFocusAfter.length,
+        pomodoroFocus: pomodoroFocus ? Number(pomodoroFocus.toFixed(1)) : null,
+        pomodoroDelta: pomodoroDelta ? Number(pomodoroDelta.toFixed(1)) : null,
+      };
+    });
+
+    const hasMetrics = data.some(item => item.checkins > 0);
+    const bestFocus = [...data]
+      .filter(item => item.focus !== null || item.pomodoroFocus !== null)
+      .sort((a, b) => Math.max(b.focus || 0, b.pomodoroFocus || 0) - Math.max(a.focus || 0, a.pomodoroFocus || 0))[0];
+    const highestStress = [...data]
+      .filter(item => item.stress !== null)
+      .sort((a, b) => b.stress - a.stress)[0];
+    const bestEnergy = [...data]
+      .filter(item => item.energy !== null)
+      .sort((a, b) => b.energy - a.energy)[0];
+
+    return { data, hasMetrics, bestFocus, highestStress, bestEnergy };
+  }, [moodLogs, pomodoroMoodSessions]);
 
   const streak = getStreak(moodLogs);
   const gardenEmoji = gardenLevel < 20 ? '🌱' : gardenLevel < 50 ? '🌿' : gardenLevel < 80 ? '🌳' : '🌸';
@@ -386,6 +508,42 @@ export default function Dashboard() {
         </div>
       </section>
 
+      <section className="card recent-memories-card">
+        <div className="section-heading-row">
+          <div>
+            <h3>Ảnh gần đây</h3>
+            <p className="text-muted">Bấm vào ảnh để mở lại cảm xúc và ghi chú đi kèm.</p>
+          </div>
+          <Link to="/mood?tab=history" className="quick-link">Mở lịch sử</Link>
+        </div>
+
+        {recentPhotoLogs.length > 0 ? (
+          <div className="memory-photo-strip" aria-label="Ảnh check-in gần đây">
+            {recentPhotoLogs.map(log => (
+              <button
+                key={log.id}
+                type="button"
+                className="memory-photo-tile"
+                onClick={() => setSelectedMemory(log)}
+                aria-label={`Mở ghi chú ảnh ngày ${format(new Date(log.date), 'dd/MM/yyyy')} lúc ${format(new Date(log.date), 'HH:mm')}`}
+              >
+                <img src={log.imageUrl} alt={`Ảnh check-in ${log.mood?.label || 'không rõ'} lúc ${format(new Date(log.date), 'HH:mm')}`} />
+                <span>{format(new Date(log.date), 'dd/MM')}</span>
+                <strong>{log.mood?.emoji} {log.mood?.label || 'Không rõ'}</strong>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="memory-empty">
+            <span aria-hidden="true">🖼️</span>
+            <div>
+              <strong>Chưa có ảnh check-in</strong>
+              <p>Lần tới khi ghi cảm xúc, thêm một ảnh nhỏ để MindBuddy lưu lại ngữ cảnh của ngày đó.</p>
+            </div>
+          </div>
+        )}
+      </section>
+
       <section className="quick-actions today-tools">
         <div className="section-heading-row mb-3">
           <div>
@@ -398,6 +556,7 @@ export default function Dashboard() {
             { to: '/mood', icon: '💭', label: latestTodayMood ? 'Ghi thêm cảm xúc' : 'Ghi cảm xúc', color: '#a29bfe', primary: true },
             { to: '/needs', icon: '🧭', label: 'Mình cần gì?', color: '#00cec9' },
             { to: '/daily-review', icon: '🪞', label: 'Nhìn lại ngày', color: '#00cec9' },
+            { to: '/good-moments', icon: '✨', label: 'Khoảnh khắc tốt', color: '#fdcb6e' },
             { to: '/pomodoro', icon: '🍅', label: 'Tập trung', color: '#fd79a8' },
             { to: '/garden', icon: '🌱', label: 'Chăm vườn', color: '#55efc4' },
             { to: '/community', icon: '🌍', label: 'Góc chia sẻ', color: '#74b9ff' },
@@ -449,6 +608,81 @@ export default function Dashboard() {
           <p className="progress-hint">{earnedBadges.length >= BADGES.length ? 'Đã sưu tập toàn bộ huy hiệu' : `${earnedBadges.length}/${BADGES.length} huy hiệu đã mở`}</p>
         </div>
       </div>
+
+      <section className="card energy-map-card">
+        <div className="section-heading-row">
+          <div>
+            <h3>Bản đồ năng lượng trong ngày</h3>
+            <p className="text-muted">Trung bình 30 ngày gần nhất theo check-in và phản hồi Pomodoro.</p>
+          </div>
+          <Link to="/mood" className="quick-link">Thêm chỉ số</Link>
+        </div>
+
+        {energyMap.hasMetrics ? (
+          <div className="energy-map-layout">
+            <div className="energy-chart-wrap" aria-label="Biểu đồ stress, năng lượng và tập trung theo khung giờ">
+              <ResponsiveContainer width="100%" height={230}>
+                <BarChart data={energyMap.data} barSize={16}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148, 163, 184, 0.22)" />
+                  <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                  <YAxis domain={[0, 5]} ticks={[1, 2, 3, 4, 5]} width={24} tick={{ fontSize: 11 }} />
+                  <Tooltip
+                    formatter={(value, name) => [`${value}/5`, name]}
+                    labelFormatter={(label) => {
+                      const bucket = energyMap.data.find(item => item.label === label);
+                      return bucket ? `${bucket.label} (${bucket.range})` : label;
+                    }}
+                  />
+                  <Bar dataKey="stress" name="Stress" fill="#ff7675" radius={[5, 5, 0, 0]} />
+                  <Bar dataKey="energy" name="Năng lượng" fill="#55efc4" radius={[5, 5, 0, 0]} />
+                  <Bar dataKey="focus" name="Tập trung" fill="#a29bfe" radius={[5, 5, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="energy-legend" aria-label="Chú giải biểu đồ">
+                <span><i className="stress" />Stress</span>
+                <span><i className="energy" />Năng lượng</span>
+                <span><i className="focus" />Tập trung</span>
+              </div>
+            </div>
+
+            <div className="energy-insights">
+              {energyMap.bestFocus && (
+                <div className="energy-insight-item focus">
+                  <span>Tập trung tốt nhất</span>
+                  <strong>{energyMap.bestFocus.label}</strong>
+                  <p>
+                    Check-in {energyMap.bestFocus.focus || '-'}/5
+                    {energyMap.bestFocus.pomodoroFocus ? `, Pomodoro sau phiên ${energyMap.bestFocus.pomodoroFocus}/5` : ''}.
+                  </p>
+                </div>
+              )}
+              {energyMap.highestStress && (
+                <div className="energy-insight-item stress">
+                  <span>Dễ căng hơn</span>
+                  <strong>{energyMap.highestStress.label}</strong>
+                  <p>Stress trung bình {energyMap.highestStress.stress}/5 trong {energyMap.highestStress.checkins} check-in.</p>
+                </div>
+              )}
+              {energyMap.bestEnergy && (
+                <div className="energy-insight-item energy">
+                  <span>Nhiều năng lượng nhất</span>
+                  <strong>{energyMap.bestEnergy.label}</strong>
+                  <p>Năng lượng trung bình {energyMap.bestEnergy.energy}/5.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="energy-map-empty">
+            <span aria-hidden="true">⚡</span>
+            <div>
+              <strong>Chưa đủ dữ liệu chỉ số phụ</strong>
+              <p>Ghi thêm stress, năng lượng và tập trung trong vài check-in để MindBuddy vẽ nhịp trong ngày.</p>
+            </div>
+            <Link to="/mood" className="btn btn-primary">Ghi cảm xúc</Link>
+          </div>
+        )}
+      </section>
 
       <section className="dashboard-focus-grid secondary-dashboard-grid">
         <div className="card mood-chart-card">
@@ -555,6 +789,33 @@ export default function Dashboard() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedMemory && (
+        <div className="dashboard-modal-overlay" onClick={e => e.target === e.currentTarget && setSelectedMemory(null)}>
+          <div className="dashboard-day-modal memory-detail-modal">
+            <div className="dashboard-modal-header">
+              <h3>{format(new Date(selectedMemory.date), 'EEEE, dd/MM/yyyy', { locale: vi })}</h3>
+              <button onClick={() => setSelectedMemory(null)} aria-label="Đóng ảnh ký ức">×</button>
+            </div>
+            <div className="memory-detail-body">
+              <img src={selectedMemory.imageUrl} alt={`Ảnh check-in lúc ${format(new Date(selectedMemory.date), 'HH:mm')}`} />
+              <div className="memory-detail-note" style={{ '--entry-color': selectedMemory.mood?.color || '#a29bfe' }}>
+                <div className="dashboard-day-entry-head">
+                  <span>{selectedMemory.mood?.emoji} {selectedMemory.mood?.label || 'Không rõ'}</span>
+                  <strong>{format(new Date(selectedMemory.date), 'HH:mm')}</strong>
+                </div>
+                {selectedMemory.causeTags.length > 0 && (
+                  <div className="dashboard-day-causes">
+                    {selectedMemory.causeTags.map(tag => <span key={tag}>{tag}</span>)}
+                  </div>
+                )}
+                <p>{selectedMemory.cleanNote || 'Không có ghi chú thêm.'}</p>
+                <Link to="/mood?tab=history" className="quick-link" onClick={() => setSelectedMemory(null)}>Xem trong lịch sử</Link>
+              </div>
             </div>
           </div>
         </div>

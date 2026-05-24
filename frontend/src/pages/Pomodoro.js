@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { notifyPomodoroBreak, notifyPomodoroResume } from '../utils/notifications';
 import './Pomodoro.css';
@@ -28,8 +29,93 @@ function todayKey() {
   return new Date().toDateString();
 }
 
+function normalizeMetric(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(5, Math.max(1, number)) : null;
+}
+
+function buildSmartRecommendation(metrics) {
+  if (!metrics) {
+    return {
+      type: 'neutral',
+      icon: '🍅',
+      title: 'Bắt đầu nhẹ nhàng',
+      text: 'Chưa có chỉ số gần nhất. Một phiên 25 phút là mặc định ổn để thử nhịp hôm nay.',
+      duration: 25,
+      actionLabel: 'Dùng 25 phút',
+      chips: [],
+    };
+  }
+
+  const focus = normalizeMetric(metrics.focus);
+  const stress = normalizeMetric(metrics.stress);
+  const energy = normalizeMetric(metrics.energy);
+
+  if (energy !== null && energy <= 2) {
+    return {
+      type: 'tired',
+      icon: '🪫',
+      title: 'Đang mệt: chỉ làm một việc nhỏ',
+      text: 'Năng lượng gần nhất thấp. Đừng ép phiên dài, chỉ chọn một việc nhỏ có thể xong trong 5 phút.',
+      duration: 5,
+      actionLabel: 'Đặt 5 phút',
+      chips: [`Năng lượng ${energy}/5`],
+    };
+  }
+
+  if (stress !== null && stress >= 4) {
+    return {
+      type: 'stress',
+      icon: '🫁',
+      title: 'Stress cao: thở 5 phút trước',
+      text: 'Căng thẳng gần nhất khá cao. Hạ nhịp trước rồi hãy vào phiên học sẽ dễ bám việc hơn.',
+      duration: 25,
+      actionLabel: 'Chuẩn bị 25 phút',
+      chips: [`Stress ${stress}/5`, focus ? `Tập trung ${focus}/5` : null].filter(Boolean),
+      sos: true,
+    };
+  }
+
+  if (focus !== null && focus <= 2) {
+    return {
+      type: 'low-focus',
+      icon: '🎯',
+      title: 'Focus thấp: Pomodoro 15 phút',
+      text: 'Mức tập trung gần nhất thấp. Một phiên ngắn đủ để vào guồng mà không tạo áp lực.',
+      duration: 15,
+      actionLabel: 'Đặt 15 phút',
+      chips: [`Tập trung ${focus}/5`],
+    };
+  }
+
+  if ((energy === null || energy >= 3) && (focus === null || focus >= 3)) {
+    return {
+      type: 'steady',
+      icon: '⚡',
+      title: 'Năng lượng ổn: Pomodoro 25 phút',
+      text: 'Chỉ số gần nhất đủ ổn để dùng phiên tiêu chuẩn. Giữ một mục tiêu rõ trước khi bấm bắt đầu.',
+      duration: 25,
+      actionLabel: 'Đặt 25 phút',
+      chips: [
+        energy ? `Năng lượng ${energy}/5` : null,
+        focus ? `Tập trung ${focus}/5` : null,
+      ].filter(Boolean),
+    };
+  }
+
+  return {
+    type: 'neutral',
+    icon: '🍅',
+    title: 'Bắt đầu vừa sức',
+    text: 'Chọn một phiên vừa đủ và ghi lại cảm nhận sau phiên để MindBuddy học nhịp tập trung của bạn.',
+    duration: 20,
+    actionLabel: 'Đặt 20 phút',
+    chips: [],
+  };
+}
+
 export default function Pomodoro() {
-  const { incrementPomodoro, pomodoroCount, user } = useApp();
+  const { incrementPomodoro, pomodoroCount, user, moodLogs } = useApp();
   const [mode, setMode] = useState('work'); // work | break
   const [timeLeft, setTimeLeft] = useState(25 * 60);
   const [running, setRunning] = useState(false);
@@ -61,6 +147,13 @@ export default function Pomodoro() {
   const intervalRef = useRef(null);
   const audioRef = useRef(null);
   const activeSessionRef = useRef(null);
+  const latestMoodLog = React.useMemo(() => (
+    [...moodLogs]
+      .filter(log => log.metrics)
+      .sort((a, b) => new Date(b.date) - new Date(a.date))[0] || null
+  ), [moodLogs]);
+  const latestMetrics = latestMoodLog?.metrics || null;
+  const smartRecommendation = React.useMemo(() => buildSmartRecommendation(latestMetrics), [latestMetrics]);
 
   useEffect(() => {
     activeSessionRef.current = activeSession;
@@ -74,6 +167,12 @@ export default function Pomodoro() {
       setPomodoroMoodSessions([]);
     }
   }, [sessionKey]);
+
+  useEffect(() => {
+    const latestFocus = normalizeMetric(latestMetrics?.focus);
+    if (!latestFocus || running || activeSessionRef.current) return;
+    setFocusBefore(latestFocus);
+  }, [latestMetrics, running]);
 
   const savePomodoroMoodSessions = (next) => {
     const capped = next.slice(0, 30);
@@ -202,6 +301,12 @@ export default function Pomodoro() {
     setActiveSession(null);
   };
 
+  const applySmartRecommendation = () => {
+    const nextDuration = smartRecommendation.duration || 25;
+    setWorkMin(nextDuration);
+    if (mode === 'work' && !running) setTimeLeft(nextDuration * 60);
+  };
+
   const mm = String(Math.floor(timeLeft / 60)).padStart(2, '0');
   const ss = String(timeLeft % 60).padStart(2, '0');
   const progress = mode === 'work'
@@ -233,28 +338,53 @@ export default function Pomodoro() {
           </div>
 
           {mode === 'work' && !running && (
-            <div className="focus-check-card">
-              <div className="focus-check-head">
-                <div>
-                  <strong>Mức tập trung hiện tại?</strong>
-                  <span>Chọn nhanh trước khi bắt đầu phiên học.</span>
+            <>
+              <div className={`smart-pomodoro-card ${smartRecommendation.type}`}>
+                <div className="smart-pomodoro-icon" aria-hidden="true">{smartRecommendation.icon}</div>
+                <div className="smart-pomodoro-copy">
+                  <span>Gợi ý phiên này</span>
+                  <strong>{smartRecommendation.title}</strong>
+                  <p>{smartRecommendation.text}</p>
+                  {latestMoodLog && (
+                    <small>Dựa trên check-in gần nhất lúc {new Date(latestMoodLog.date).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}.</small>
+                  )}
+                  {smartRecommendation.chips.length > 0 && (
+                    <div className="smart-pomodoro-chips">
+                      {smartRecommendation.chips.map(chip => <i key={chip}>{chip}</i>)}
+                    </div>
+                  )}
                 </div>
-                <b>{focusBefore}/5</b>
+                <div className="smart-pomodoro-actions">
+                  {smartRecommendation.sos && <Link className="btn btn-secondary" to="/sos">Mở S.O.S</Link>}
+                  <button type="button" className="btn btn-primary" onClick={applySmartRecommendation}>
+                    {smartRecommendation.actionLabel}
+                  </button>
+                </div>
               </div>
-              <input
-                type="range"
-                min="1"
-                max="5"
-                step="1"
-                value={focusBefore}
-                onChange={e => setFocusBefore(Number(e.target.value))}
-                aria-label={`Mức tập trung trước phiên ${focusBefore} trên 5`}
-              />
-              <div className="focus-scale">
-                <span>Rất phân tán</span>
-                <span>Rất rõ</span>
+
+              <div className="focus-check-card">
+                <div className="focus-check-head">
+                  <div>
+                    <strong>Mức tập trung hiện tại?</strong>
+                    <span>Chọn nhanh trước khi bắt đầu phiên học.</span>
+                  </div>
+                  <b>{focusBefore}/5</b>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="1"
+                  value={focusBefore}
+                  onChange={e => setFocusBefore(Number(e.target.value))}
+                  aria-label={`Mức tập trung trước phiên ${focusBefore} trên 5`}
+                />
+                <div className="focus-scale">
+                  <span>Rất phân tán</span>
+                  <span>Rất rõ</span>
+                </div>
               </div>
-            </div>
+            </>
           )}
 
           <div className="timer-circle" style={{ '--progress': progress }}>
