@@ -12,6 +12,7 @@ const PRIMARY_NAV = [
 
 const MORE_NAV = [
   { path: '/daily-review', icon: '🪞', label: 'Nhìn lại' },
+  { path: '/good-moments', icon: '✨', label: 'Điều tốt' },
   { path: '/community', icon: '🌍', label: 'Góc riêng' },
   { path: '/garden', icon: '🌱', label: 'Vườn' },
 ];
@@ -73,7 +74,15 @@ export default function Layout({ children }) {
                       <span>{item.icon}</span>
                       <div>
                         <strong>{item.label}</strong>
-                        <small>{item.path === '/daily-review' ? 'Tóm tắt ngày' : item.path === '/community' ? 'Xả lòng, thư tương lai' : 'Thói quen và huy hiệu'}</small>
+                        <small>
+                          {item.path === '/daily-review'
+                            ? 'Tóm tắt ngày'
+                            : item.path === '/good-moments'
+                              ? 'Khoảnh khắc ổn'
+                              : item.path === '/community'
+                                ? 'Xả lòng, thư tương lai'
+                                : 'Thói quen và huy hiệu'}
+                        </small>
                       </div>
                     </Link>
                   ))}
