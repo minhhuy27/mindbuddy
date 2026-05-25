@@ -1,6 +1,8 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { endOfMonth, format } from 'date-fns';
+import { getBlob, ref as storageRef } from 'firebase/storage';
+import { storage } from '../firebase';
 import { normalizeMoodAttachments } from './moodImages';
 
 const DEFAULT_MOOD_LABELS = { 1: 'Tuyệt vời', 2: 'Vui', 3: 'Bình thường', 4: 'Buồn', 5: 'Căng thẳng' };
@@ -9,6 +11,11 @@ const DEFAULT_MOOD_SCORES = { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 };
 const PAGE_WIDTH = 794;
 const PAGE_HEIGHT = 1123;
 const PAGE_BODY_CAPACITY = 900;
+const THUMBNAIL_WIDTH = 720;
+const THUMBNAIL_HEIGHT = 540;
+const IMAGE_LOAD_TIMEOUT_MS = 8000;
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const thumbnailCache = new Map();
 
 function escapeHtml(value = '') {
   return String(value)
@@ -187,6 +194,140 @@ function paginateLogs(logs) {
   return pages;
 }
 
+function collectImageAttachments(logs, allMoods) {
+  const images = logs.flatMap(log => {
+    const mood = getMoodInfo(log.mood, allMoods);
+    return normalizeMoodAttachments(log)
+      .filter(item => item.kind === 'image' && item.url)
+      .map((item, index) => ({
+        ...item,
+        id: `${log.id || log.date}-${index}`,
+        date: log.date,
+        mood,
+      }));
+  });
+  return images.map((image, renderIndex) => ({ ...image, renderIndex }));
+}
+
+function paginateImages(images, perPage = 9) {
+  const pages = [];
+  for (let index = 0; index < images.length; index += perPage) {
+    pages.push(images.slice(index, index + perPage));
+  }
+  return pages;
+}
+
+function withTimeout(promise, ms, message) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timeoutId));
+}
+
+async function fetchImageBlob(image) {
+  if (image.url) {
+    try {
+      const proxied = await fetch(`${API_BASE}/media/image?url=${encodeURIComponent(image.url)}`, {
+        cache: 'force-cache',
+      });
+      if (proxied.ok) return proxied.blob();
+    } catch (error) {
+      console.warn('Image proxy unavailable, trying Firebase Storage fallback:', error?.message || error);
+    }
+  }
+  if (image.path) {
+    try {
+      return await getBlob(storageRef(storage, image.path));
+    } catch (error) {
+      console.warn('Firebase Storage blob fallback failed, trying direct URL:', error?.message || error);
+    }
+  }
+  const response = await fetch(image.url, { mode: 'cors', cache: 'force-cache' });
+  if (!response.ok) throw new Error(`Image fetch failed: ${response.status}`);
+  return response.blob();
+}
+
+function loadImageFromBlob(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Không đọc được ảnh'));
+    };
+    img.src = url;
+  });
+}
+
+function drawCoverImage(img, width, height) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+
+  const scale = Math.max(width / img.width, height / img.height);
+  const sw = width / scale;
+  const sh = height / scale;
+  const sx = (img.width - sw) / 2;
+  const sy = (img.height - sh) / 2;
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height);
+  return canvas.toDataURL('image/jpeg', 0.82);
+}
+
+function makeImageFallbackDataUrl() {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${THUMBNAIL_WIDTH}" height="${THUMBNAIL_HEIGHT}" viewBox="0 0 ${THUMBNAIL_WIDTH} ${THUMBNAIL_HEIGHT}">
+      <rect width="100%" height="100%" fill="#eef2ff"/>
+      <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#7a849d" font-family="Arial, sans-serif" font-size="28" font-weight="700">Không tải được ảnh</text>
+    </svg>
+  `;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+async function imageToThumbnailDataUrl(image) {
+  const cacheKey = image.path || image.url;
+  if (thumbnailCache.has(cacheKey)) return thumbnailCache.get(cacheKey);
+
+  try {
+    const blob = await withTimeout(
+      fetchImageBlob(image),
+      IMAGE_LOAD_TIMEOUT_MS,
+      'Tải ảnh quá lâu'
+    );
+    const img = await withTimeout(
+      loadImageFromBlob(blob),
+      IMAGE_LOAD_TIMEOUT_MS,
+      'Đọc ảnh quá lâu'
+    );
+    const dataUrl = drawCoverImage(img, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
+    thumbnailCache.set(cacheKey, dataUrl);
+    return dataUrl;
+  } catch (error) {
+    console.warn('Không thể nhúng ảnh vào PDF:', {
+      path: image.path,
+      url: image.url,
+      error: error?.message || error,
+    });
+    const fallback = makeImageFallbackDataUrl();
+    thumbnailCache.set(cacheKey, fallback);
+    return fallback;
+  }
+}
+
+async function prepareImageAttachments(images) {
+  return Promise.all(images.map(async image => ({
+    ...image,
+    renderUrl: await imageToThumbnailDataUrl(image),
+  })));
+}
+
 function renderStatCards(items) {
   return `
     <div class="stat-grid">
@@ -260,6 +401,24 @@ function renderLogRow(log, allMoods) {
   `;
 }
 
+function renderImageGallery(images) {
+  return `
+    <section class="gallery-wrap">
+      <div class="gallery-grid">
+        ${images.map(image => `
+          <figure class="gallery-item">
+            <img src="${escapeHtml(image.renderUrl || makeImageFallbackDataUrl())}" alt="${escapeHtml(image.name || 'Ảnh check-in')}" />
+            <figcaption>
+              <strong>${format(new Date(image.date), 'dd/MM/yyyy HH:mm')}</strong>
+              <span>${escapeHtml(`${image.mood?.emoji || ''} ${image.mood?.label || 'Không rõ'}`.trim())}</span>
+            </figcaption>
+          </figure>
+        `).join('')}
+      </div>
+    </section>
+  `;
+}
+
 function renderPage({ title, subtitle, userName, body, pageNumber, totalPages, compactHeader = false }) {
   return `
     <section class="pdf-page">
@@ -301,12 +460,14 @@ function renderCoverBody({ stats, distribution, statItems, intro }) {
   `;
 }
 
-function buildDocument({ title, subtitle, userName, logs, allMoods, statItems, intro, periodDays }) {
+async function buildDocument({ title, subtitle, userName, logs, allMoods, statItems, intro, periodDays }) {
   const sortedLogs = [...logs].sort((a, b) => new Date(b.date) - new Date(a.date));
   const stats = buildStats(sortedLogs, allMoods, periodDays);
   const distribution = moodDistribution(stats, allMoods);
   const logPages = paginateLogs(sortedLogs);
-  const totalPages = sortedLogs.length ? 1 + logPages.length : 2;
+  const imageAttachments = await prepareImageAttachments(collectImageAttachments(sortedLogs, allMoods));
+  const imagePages = paginateImages(imageAttachments);
+  const totalPages = sortedLogs.length ? 1 + logPages.length + imagePages.length : 2;
 
   const pages = [
     renderPage({
@@ -329,7 +490,7 @@ function buildDocument({ title, subtitle, userName, logs, allMoods, statItems, i
       compactHeader: true,
       body: '<section class="empty-state">Không có dữ liệu trong khoảng thời gian này.</section>',
     }));
-    return pages.join('');
+    return { html: pages.join(''), images: [] };
   }
 
   logPages.forEach((pageLogs, index) => {
@@ -344,10 +505,22 @@ function buildDocument({ title, subtitle, userName, logs, allMoods, statItems, i
     }));
   });
 
-  return pages.join('');
+  imagePages.forEach((pageImages, index) => {
+    pages.push(renderPage({
+      title: 'Phụ lục ảnh',
+      subtitle: `${subtitle} · ${imageAttachments.length} ảnh check-in`,
+      userName,
+      pageNumber: 1 + logPages.length + index + 1,
+      totalPages,
+      compactHeader: true,
+      body: renderImageGallery(pageImages),
+    }));
+  });
+
+  return { html: pages.join(''), images: imageAttachments };
 }
 
-function buildMonthDocument({ userName, moodLogs, month, year, allMoods }) {
+async function buildMonthDocument({ userName, moodLogs, month, year, allMoods }) {
   const end = endOfMonth(new Date(year, month, 1));
   const logs = moodLogs.filter(log => {
     const date = new Date(log.date);
@@ -355,7 +528,7 @@ function buildMonthDocument({ userName, moodLogs, month, year, allMoods }) {
   });
   const stats = buildStats(logs, allMoods, end.getDate());
   const monthLabel = `Tháng ${month + 1}/${year}`;
-  return buildDocument({
+  return await buildDocument({
     title: `Báo cáo cảm xúc ${monthLabel}`,
     subtitle: monthLabel,
     userName,
@@ -374,7 +547,7 @@ function buildMonthDocument({ userName, moodLogs, month, year, allMoods }) {
   });
 }
 
-function buildAllDocument({ userName, moodLogs, allMoods }) {
+async function buildAllDocument({ userName, moodLogs, allMoods }) {
   if (!moodLogs.length) return null;
   const sortedLogs = [...moodLogs].sort((a, b) => new Date(a.date) - new Date(b.date));
   const firstDate = new Date(sortedLogs[0].date);
@@ -385,7 +558,7 @@ function buildAllDocument({ userName, moodLogs, allMoods }) {
   }));
   const stats = buildStats(sortedLogs, allMoods);
 
-  return buildDocument({
+  return await buildDocument({
     title: 'Toàn bộ nhật ký cảm xúc',
     subtitle: `${format(firstDate, 'dd/MM/yyyy')} - ${format(lastDate, 'dd/MM/yyyy')}`,
     userName,
@@ -556,8 +729,68 @@ const DOCUMENT_STYLES = `
     padding-left: 8px;
   }
   .note-space { height: 5px; }
+  .gallery-wrap {
+    border: 1px solid #dce3f5;
+    border-radius: 18px;
+    background: white;
+    padding: 14px;
+    box-shadow: 0 8px 22px rgba(42, 52, 89, 0.06);
+  }
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .gallery-item {
+    border: 1px solid #e1e7f7;
+    border-radius: 14px;
+    background: #fafbff;
+    margin: 0;
+    overflow: hidden;
+  }
+  .gallery-item img {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    display: block;
+    object-fit: cover;
+    background: #eef2ff;
+  }
+  .gallery-item figcaption {
+    display: grid;
+    gap: 3px;
+    padding: 9px;
+  }
+  .gallery-item figcaption strong {
+    color: #27314c;
+    font-size: 11px;
+  }
+  .gallery-item figcaption span {
+    color: #64708f;
+    font-size: 10.5px;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+  }
   footer { border-top: 1px solid #dce3f5; color: #7a849d; display: flex; justify-content: space-between; padding-top: 12px; font-size: 11px; }
 `;
+
+function waitForImages(root) {
+  const images = Array.from(root.querySelectorAll('img'));
+  if (!images.length) return Promise.resolve();
+  return Promise.all(images.map(img => {
+    if (img.complete) return Promise.resolve();
+    return new Promise(resolve => {
+      const timeout = window.setTimeout(resolve, 3500);
+      img.onload = () => {
+        window.clearTimeout(timeout);
+        resolve();
+      };
+      img.onerror = () => {
+        window.clearTimeout(timeout);
+        resolve();
+      };
+    });
+  }));
+}
 
 async function renderToPDF(documentHtml, filename) {
   const container = document.createElement('div');
@@ -573,6 +806,7 @@ async function renderToPDF(documentHtml, filename) {
     const pageH = pdf.internal.pageSize.getHeight();
 
     for (let index = 0; index < pages.length; index += 1) {
+      await waitForImages(pages[index]);
       const canvas = await html2canvas(pages[index], {
         scale: 2,
         useCORS: true,
@@ -592,12 +826,12 @@ async function renderToPDF(documentHtml, filename) {
 }
 
 export async function exportMoodPDF({ userName, moodLogs, month, year, allMoods }) {
-  const documentHtml = buildMonthDocument({ userName, moodLogs, month, year, allMoods });
-  await renderToPDF(documentHtml, `MindBuddy_T${month + 1}-${year}.pdf`);
+  const documentData = await buildMonthDocument({ userName, moodLogs, month, year, allMoods });
+  await renderToPDF(documentData.html, `MindBuddy_T${month + 1}-${year}.pdf`);
 }
 
 export async function exportAllMoodPDF({ userName, moodLogs, allMoods }) {
-  const documentHtml = buildAllDocument({ userName, moodLogs, allMoods });
-  if (!documentHtml) return;
-  await renderToPDF(documentHtml, `MindBuddy_ToanBo_${format(new Date(), 'ddMMyyyy')}.pdf`);
+  const documentData = await buildAllDocument({ userName, moodLogs, allMoods });
+  if (!documentData) return;
+  await renderToPDF(documentData.html, `MindBuddy_ToanBo_${format(new Date(), 'ddMMyyyy')}.pdf`);
 }

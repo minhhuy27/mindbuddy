@@ -35,6 +35,24 @@
   background: #050711;
 }
 
+.media-attachment.video video:fullscreen {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw;
+  max-height: 100vh;
+  object-fit: contain !important;
+  background: #000;
+}
+
+.media-attachment.video video:-webkit-full-screen {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw;
+  max-height: 100vh;
+  object-fit: contain !important;
+  background: #000;
+}
+
 .media-attachment.image:hover img,
 .media-attachment.image:focus-visible img {
   outline: 3px solid color-mix(in srgb, var(--primary) 35%, transparent);
