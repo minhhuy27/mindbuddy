@@ -1,275 +1,603 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { format, endOfMonth } from 'date-fns';
+import { endOfMonth, format } from 'date-fns';
+import { normalizeMoodAttachments } from './moodImages';
 
-// Built-in mood defaults (fallback khi không có allMoods)
 const DEFAULT_MOOD_LABELS = { 1: 'Tuyệt vời', 2: 'Vui', 3: 'Bình thường', 4: 'Buồn', 5: 'Căng thẳng' };
 const DEFAULT_MOOD_COLORS = { 1: '#55efc4', 2: '#74b9ff', 3: '#fdcb6e', 4: '#fd79a8', 5: '#e17055' };
 const DEFAULT_MOOD_SCORES = { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 };
+const PAGE_WIDTH = 794;
+const PAGE_HEIGHT = 1123;
+const PAGE_BODY_CAPACITY = 900;
 
-// Resolve mood info từ allMoods (built-in + custom) hoặc fallback
+function escapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function getMoodInfo(moodId, allMoods) {
-  if (allMoods && allMoods.length > 0) {
-    const m = allMoods.find(x => x.id === moodId || x.id === Number(moodId));
-    if (m) return { label: m.label, color: m.color, score: m.score, emoji: m.emoji };
+  if (allMoods?.length) {
+    const mood = allMoods.find(item => item.id === moodId || item.id === Number(moodId));
+    if (mood) return { label: mood.label, color: mood.color, score: mood.score, emoji: mood.emoji };
   }
   return {
     label: DEFAULT_MOOD_LABELS[moodId] || 'Không rõ',
-    color: DEFAULT_MOOD_COLORS[moodId] || '#ccc',
+    color: DEFAULT_MOOD_COLORS[moodId] || '#a29bfe',
     score: DEFAULT_MOOD_SCORES[moodId] || 3,
     emoji: '',
   };
 }
 
-// ── Shared styles ──────────────────────────────────────────────────────────
-const BASE_STYLES = `
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #1a1a2e; padding: 32px; width: 794px; }
-  .header { background: linear-gradient(135deg, #6c63ff, #a29bfe); color: white; border-radius: 12px; padding: 24px 28px; margin-bottom: 24px; }
-  .header h1 { font-size: 24px; margin-bottom: 4px; }
-  .header p { opacity: 0.85; font-size: 13px; }
-  h2 { font-size: 15px; font-weight: 700; color: #6c63ff; margin: 20px 0 10px; border-left: 3px solid #6c63ff; padding-left: 10px; }
-  h3 { font-size: 13px; font-weight: 700; color: #444; margin: 16px 0 8px; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-  th { background: #6c63ff; color: white; padding: 8px 12px; text-align: left; font-size: 12px; }
-  td { padding: 7px 12px; border-bottom: 1px solid #e0e6ff; font-size: 12px; vertical-align: top; }
-  tr:nth-child(even) td { background: #f5f3ff; }
-  .month-block { margin-bottom: 28px; border: 1px solid #e0e6ff; border-radius: 10px; overflow: hidden; }
-  .month-title { background: #ede9ff; padding: 10px 16px; font-size: 14px; font-weight: 700; color: #6c63ff; }
-  .month-stats { display: flex; gap: 16px; padding: 10px 16px; background: #faf9ff; border-bottom: 1px solid #e0e6ff; flex-wrap: wrap; }
-  .stat-chip { font-size: 11px; color: #555; }
-  .stat-chip strong { color: #6c63ff; }
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
-  .footer { margin-top: 32px; text-align: center; color: #999; font-size: 11px; border-top: 1px solid #e0e6ff; padding-top: 12px; }
-  .badge-custom { display: inline-block; font-size: 10px; background: #ede9ff; color: #6c63ff; border-radius: 6px; padding: 1px 5px; margin-left: 4px; }
-  .summary-box { background: #f0fff4; border-left: 3px solid #55efc4; border-radius: 6px; padding: 10px 14px; margin: 8px 0 16px; font-size: 12px; color: #2d6a4f; }
-`;
+function cleanNote(note = '') {
+  return note.replace(/\s*\[.+\]$/, '').trim();
+}
 
-// ── Build stats cho một tập logs ──────────────────────────────────────────
-function buildStats(logs, allMoods) {
+function renderInlineRichText(text = '') {
+  let safe = escapeHtml(text);
+  safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  safe = safe.replace(/&lt;u&gt;([\s\S]*?)&lt;\/u&gt;/gi, '<u>$1</u>');
+  return safe;
+}
+
+function renderRichNote(note = '') {
+  const source = cleanNote(note || '');
+  if (!source) return '<div class="note-line muted">Không có ghi chú thêm.</div>';
+
+  return source.split(/\r?\n/).map(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return '<div class="note-space"></div>';
+
+    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      return `<div class="note-heading level-${heading[1].length}">${renderInlineRichText(heading[2])}</div>`;
+    }
+
+    const checklist = trimmed.match(/^-\s+\[([ xX])\]\s+(.+)$/);
+    if (checklist) {
+      const checked = checklist[1].toLowerCase() === 'x';
+      return `<div class="note-check ${checked ? 'checked' : ''}"><i>${checked ? '✓' : ''}</i><span>${renderInlineRichText(checklist[2])}</span></div>`;
+    }
+
+    const quote = trimmed.match(/^>\s?(.+)$/);
+    if (quote) {
+      return `<div class="note-quote">${renderInlineRichText(quote[1])}</div>`;
+    }
+
+    return `<div class="note-line">${renderInlineRichText(line)}</div>`;
+  }).join('');
+}
+
+function extractCauses(note = '') {
+  return note.match(/\[(.+)\]$/)?.[1]?.split(', ').filter(Boolean) || [];
+}
+
+function normalizeMetric(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(5, Math.max(1, number)) : null;
+}
+
+function metricLine(metrics = {}) {
+  const items = [
+    ['Stress', normalizeMetric(metrics.stress)],
+    ['Năng lượng', normalizeMetric(metrics.energy)],
+    ['Giấc ngủ', normalizeMetric(metrics.sleep)],
+    ['Tập trung', normalizeMetric(metrics.focus)],
+  ].filter(([, value]) => value !== null);
+
+  return items.length
+    ? items.map(([label, value]) => `${label}: ${value}/5`).join(' · ')
+    : '';
+}
+
+function attachmentLine(log) {
+  const counts = normalizeMoodAttachments(log).reduce((acc, item) => {
+    acc[item.kind] = (acc[item.kind] || 0) + 1;
+    return acc;
+  }, {});
+  const parts = [
+    counts.image ? `${counts.image} ảnh` : '',
+    counts.video ? `${counts.video} video` : '',
+    counts.audio ? `${counts.audio} âm thanh` : '',
+    counts.file ? `${counts.file} tệp` : '',
+  ].filter(Boolean);
+  return parts.join(' · ');
+}
+
+function buildStats(logs, allMoods, periodDays = null) {
   const totalEntries = logs.length;
-  if (totalEntries === 0) return { totalEntries: 0, avgScore: 'N/A', mostFreq: null, moodCount: {} };
+  if (!totalEntries) {
+    return {
+      totalEntries: 0,
+      uniqueDays: 0,
+      avgScore: 'N/A',
+      mostFreq: null,
+      moodCount: {},
+      mediaCount: 0,
+      checkinRate: periodDays ? '0%' : '',
+    };
+  }
 
   const moodCount = {};
-  logs.forEach(l => { moodCount[l.mood] = (moodCount[l.mood] || 0) + 1; });
+  logs.forEach(log => {
+    moodCount[log.mood] = (moodCount[log.mood] || 0) + 1;
+  });
 
+  const uniqueDays = new Set(logs.map(log => new Date(log.date).toDateString())).size;
   const avgScore = (
-    logs.reduce((s, l) => s + (getMoodInfo(l.mood, allMoods).score || 3), 0) / totalEntries
+    logs.reduce((sum, log) => sum + (getMoodInfo(log.mood, allMoods).score || 3), 0) / totalEntries
   ).toFixed(1);
-
   const mostFreqEntry = Object.entries(moodCount).sort((a, b) => b[1] - a[1])[0];
   const mostFreq = mostFreqEntry
     ? { ...getMoodInfo(mostFreqEntry[0], allMoods), count: mostFreqEntry[1] }
     : null;
+  const mediaCount = logs.reduce((sum, log) => sum + normalizeMoodAttachments(log).length, 0);
 
-  return { totalEntries, avgScore, mostFreq, moodCount };
+  return {
+    totalEntries,
+    uniqueDays,
+    avgScore,
+    mostFreq,
+    moodCount,
+    mediaCount,
+    checkinRate: periodDays ? `${Math.round((uniqueDays / periodDays) * 100)}%` : '',
+  };
 }
 
-// ── Render rows nhật ký ───────────────────────────────────────────────────
-function renderLogRows(logs, allMoods) {
-  return logs.map(l => {
-    const mood = getMoodInfo(l.mood, allMoods);
-    const isCustom = String(l.mood).startsWith('custom_');
-    const cleanNote = l.note?.replace(/\s*\[.+\]$/, '') || '';
-    const causeTags = l.note?.match(/\[(.+)\]/)?.[1] || '';
-    return `<tr>
-      <td style="white-space:nowrap">${format(new Date(l.date), 'dd/MM/yyyy HH:mm')}</td>
-      <td>
-        <span style="color:${mood.color};font-weight:600">${mood.emoji ? mood.emoji + ' ' : ''}${mood.label}</span>
-        ${isCustom ? '<span class="badge-custom">tùy chỉnh</span>' : ''}
-      </td>
-      <td style="color:#666;font-size:11px">${causeTags}</td>
-      <td>${cleanNote}</td>
-    </tr>`;
-  }).join('');
+function moodDistribution(stats, allMoods) {
+  return Object.keys(stats.moodCount)
+    .map(id => ({
+      ...getMoodInfo(id, allMoods),
+      id,
+      count: stats.moodCount[id],
+      pct: stats.totalEntries ? Math.round((stats.moodCount[id] / stats.totalEntries) * 100) : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
 }
 
-// ── HTML cho xuất theo tháng ──────────────────────────────────────────────
-function buildMonthHTML({ userName, moodLogs, month, year, allMoods }) {
-  const monthStr = `Tháng ${month + 1}/${year}`;
-  const end = endOfMonth(new Date(year, month, 1));
-
-  const logs = [...moodLogs]
-    .filter(l => {
-      const d = new Date(l.date);
-      return d.getMonth() === month && d.getFullYear() === year;
-    })
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
-
-  const { totalEntries, avgScore, mostFreq, moodCount } = buildStats(logs, allMoods);
-  const uniqueDays = new Set(logs.map(l => new Date(l.date).toDateString())).size;
-
-  const statsRows = [
-    ['Số ngày có ghi chú', `${uniqueDays} / ${end.getDate()} ngày`],
-    ['Tổng số ghi chú', `${totalEntries} lần`],
-    ['Điểm cảm xúc trung bình', `${avgScore} / 5`],
-    ['Cảm xúc phổ biến nhất', mostFreq ? `${mostFreq.emoji || ''} ${mostFreq.label} (${mostFreq.count} lần)` : 'N/A'],
-    ['Tỉ lệ ngày check-in', `${Math.round(uniqueDays / end.getDate() * 100)}%`],
-  ];
-
-  // Phân bố cảm xúc — chỉ hiện mood đã dùng
-  const usedMoods = Object.keys(moodCount).map(id => ({
-    ...getMoodInfo(id, allMoods),
-    id,
-    count: moodCount[id],
-    pct: totalEntries > 0 ? Math.round(moodCount[id] / totalEntries * 100) : 0,
-  })).sort((a, b) => b.count - a.count);
-
-  const distRows = usedMoods.map(m =>
-    `<tr>
-      <td><span class="dot" style="background:${m.color}"></span>${m.emoji || ''} ${m.label}</td>
-      <td style="text-align:center">${m.count}</td>
-      <td style="text-align:center">${m.pct}%</td>
-    </tr>`
-  ).join('');
-
-  return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><style>${BASE_STYLES}</style></head>
-<body>
-  <div class="header">
-    <h1>🧠 MindBuddy – Báo cáo cảm xúc</h1>
-    <p>${monthStr} &nbsp;|&nbsp; ${userName} &nbsp;|&nbsp; Xuất ngày: ${format(new Date(), 'dd/MM/yyyy')}</p>
-  </div>
-
-  <h2>Tổng quan ${monthStr}</h2>
-  <table>
-    <thead><tr><th>Chỉ số</th><th>Kết quả</th></tr></thead>
-    <tbody>${statsRows.map(([k, v]) => `<tr><td>${k}</td><td><strong>${v}</strong></td></tr>`).join('')}</tbody>
-  </table>
-
-  ${usedMoods.length > 0 ? `
-  <h2>Phân bố cảm xúc</h2>
-  <table>
-    <thead><tr><th>Cảm xúc</th><th style="text-align:center">Số lần</th><th style="text-align:center">Tỉ lệ</th></tr></thead>
-    <tbody>${distRows}</tbody>
-  </table>` : ''}
-
-  ${logs.length > 0 ? `
-  <h2>Nhật ký chi tiết</h2>
-  <table>
-    <thead><tr><th>Ngày giờ</th><th>Cảm xúc</th><th>Nguyên nhân</th><th>Ghi chú</th></tr></thead>
-    <tbody>${renderLogRows(logs, allMoods)}</tbody>
-  </table>` : '<p style="color:#999;margin-top:16px">Không có dữ liệu trong tháng này.</p>'}
-
-  <div class="footer">MindBuddy – Trợ lý sức khỏe tâm thần cho sinh viên &nbsp;|&nbsp; "Cùng bạn vượt qua áp lực, kiến tạo tương lai."</div>
-</body></html>`;
+function estimateLogHeight(log) {
+  const noteLength = cleanNote(log.note || '').length;
+  const causes = extractCauses(log.note || '').length;
+  const metrics = metricLine(log.metrics || '') ? 1 : 0;
+  const media = attachmentLine(log) ? 1 : 0;
+  const blocks = cleanNote(log.note || '').split(/\r?\n/).length;
+  return Math.min(240, 40 + Math.ceil(noteLength / 110) * 13 + blocks * 5 + causes * 3 + (metrics + media) * 10);
 }
 
-// ── HTML cho xuất toàn bộ ─────────────────────────────────────────────────
-function buildAllHTML({ userName, moodLogs, allMoods }) {
-  if (moodLogs.length === 0) return null;
+function paginateLogs(logs) {
+  const pages = [];
+  let current = [];
+  let used = 0;
 
-  const sorted = [...moodLogs].sort((a, b) => new Date(b.date) - new Date(a.date));
-
-  // Nhóm theo tháng
-  const monthMap = {};
-  sorted.forEach(l => {
-    const d = new Date(l.date);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    if (!monthMap[key]) monthMap[key] = [];
-    monthMap[key].push(l);
+  logs.forEach(log => {
+    const height = Math.min(260, estimateLogHeight(log));
+    if (current.length && used + height > PAGE_BODY_CAPACITY) {
+      pages.push(current);
+      current = [];
+      used = 0;
+    }
+    current.push(log);
+    used += height;
   });
 
-  const months = Object.keys(monthMap).sort((a, b) => b.localeCompare(a)); // mới nhất trước
-
-  // Thống kê tổng
-  const { totalEntries, avgScore, mostFreq } = buildStats(sorted, allMoods);
-  const uniqueDays = new Set(sorted.map(l => new Date(l.date).toDateString())).size;
-  const firstDate = new Date(sorted[sorted.length - 1].date);
-  const lastDate = new Date(sorted[0].date);
-
-  const overallStats = [
-    ['Thời gian ghi chép', `${format(firstDate, 'dd/MM/yyyy')} – ${format(lastDate, 'dd/MM/yyyy')}`],
-    ['Tổng số ghi chú', `${totalEntries} lần`],
-    ['Số ngày có ghi chú', `${uniqueDays} ngày`],
-    ['Điểm cảm xúc trung bình', `${avgScore} / 5`],
-    ['Cảm xúc phổ biến nhất', mostFreq ? `${mostFreq.emoji || ''} ${mostFreq.label} (${mostFreq.count} lần)` : 'N/A'],
-    ['Số tháng ghi chép', `${months.length} tháng`],
-  ];
-
-  // Render từng tháng
-  const monthBlocks = months.map(key => {
-    const [y, m] = key.split('-').map(Number);
-    const logs = monthMap[key];
-    const { totalEntries: te, avgScore: avg, mostFreq: mf } = buildStats(logs, allMoods);
-    const uniqueDaysMonth = new Set(logs.map(l => new Date(l.date).toDateString())).size;
-
-    return `
-    <div class="month-block">
-      <div class="month-title">📅 Tháng ${m}/${y} &nbsp;—&nbsp; ${te} ghi chú, ${uniqueDaysMonth} ngày</div>
-      <div class="month-stats">
-        <span class="stat-chip">Trung bình: <strong>${avg}/5</strong></span>
-        ${mf ? `<span class="stat-chip">Phổ biến: <strong>${mf.emoji || ''} ${mf.label}</strong></span>` : ''}
-      </div>
-      <table>
-        <thead><tr><th>Ngày giờ</th><th>Cảm xúc</th><th>Nguyên nhân</th><th>Ghi chú</th></tr></thead>
-        <tbody>${renderLogRows(logs, allMoods)}</tbody>
-      </table>
-    </div>`;
-  }).join('');
-
-  return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><style>${BASE_STYLES}</style></head>
-<body>
-  <div class="header">
-    <h1>🧠 MindBuddy – Toàn bộ nhật ký cảm xúc</h1>
-    <p>${userName} &nbsp;|&nbsp; Xuất ngày: ${format(new Date(), 'dd/MM/yyyy')} &nbsp;|&nbsp; ${months.length} tháng · ${totalEntries} ghi chú</p>
-  </div>
-
-  <h2>Tổng quan toàn bộ</h2>
-  <table>
-    <thead><tr><th>Chỉ số</th><th>Kết quả</th></tr></thead>
-    <tbody>${overallStats.map(([k, v]) => `<tr><td>${k}</td><td><strong>${v}</strong></td></tr>`).join('')}</tbody>
-  </table>
-
-  <h2>Chi tiết theo tháng</h2>
-  ${monthBlocks}
-
-  <div class="footer">MindBuddy – Trợ lý sức khỏe tâm thần cho sinh viên &nbsp;|&nbsp; "Cùng bạn vượt qua áp lực, kiến tạo tương lai."</div>
-</body></html>`;
+  if (current.length) pages.push(current);
+  return pages;
 }
 
-// ── Hàm render HTML → PDF ─────────────────────────────────────────────────
-async function renderToPDF(html, filename) {
+function renderStatCards(items) {
+  return `
+    <div class="stat-grid">
+      ${items.map(item => `
+        <div class="stat-card">
+          <span>${escapeHtml(item.label)}</span>
+          <strong>${escapeHtml(item.value)}</strong>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderDistribution(distribution) {
+  if (!distribution.length) return '<p class="muted">Chưa có dữ liệu cảm xúc trong khoảng này.</p>';
+  return `
+    <div class="distribution">
+      ${distribution.map(item => `
+        <div class="distribution-row">
+          <div><i style="background:${item.color}"></i><span>${escapeHtml(`${item.emoji || ''} ${item.label}`.trim())}</span></div>
+          <strong>${item.count} lần</strong>
+          <em>${item.pct}%</em>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderLogTable(logs, allMoods) {
+  return `
+    <table class="detail-table">
+      <thead>
+        <tr>
+          <th class="col-time">Thời gian</th>
+          <th class="col-mood">Cảm xúc</th>
+          <th class="col-meta">Chỉ số / nguyên nhân</th>
+          <th class="col-note">Ghi chú</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${logs.map(log => renderLogRow(log, allMoods)).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderLogRow(log, allMoods) {
+  const mood = getMoodInfo(log.mood, allMoods);
+  const causes = extractCauses(log.note || '');
+  const metrics = metricLine(log.metrics || {});
+  const attachments = attachmentLine(log);
+  return `
+    <tr style="--mood-color:${mood.color}">
+      <td class="col-time">
+        <strong>${format(new Date(log.date), 'dd/MM/yyyy')}</strong>
+        <span>${format(new Date(log.date), 'HH:mm')}</span>
+      </td>
+      <td class="col-mood">
+        <b>${escapeHtml(`${mood.emoji || ''} ${mood.label}`.trim())}</b>
+        <span>${mood.score || 3}/5</span>
+      </td>
+      <td class="col-meta">
+        ${metrics ? `<p>${escapeHtml(metrics)}</p>` : '<p class="muted">Chưa có chỉ số phụ</p>'}
+        ${causes.length ? `<div class="tags">${causes.map(cause => `<i>${escapeHtml(cause)}</i>`).join('')}</div>` : ''}
+        ${attachments ? `<p>${escapeHtml(attachments)}</p>` : ''}
+      </td>
+      <td class="col-note">
+        <div class="note-rich">${renderRichNote(log.note || '')}</div>
+      </td>
+    </tr>
+  `;
+}
+
+function renderPage({ title, subtitle, userName, body, pageNumber, totalPages, compactHeader = false }) {
+  return `
+    <section class="pdf-page">
+      <header class="${compactHeader ? 'page-header compact' : 'page-header'}">
+        <div>
+          <span>MindBuddy</span>
+          <h1>${escapeHtml(title)}</h1>
+          <p>${escapeHtml(subtitle)}</p>
+        </div>
+        <div class="export-meta">
+          <strong>${escapeHtml(userName)}</strong>
+          <span>Xuất ngày ${format(new Date(), 'dd/MM/yyyy')}</span>
+        </div>
+      </header>
+      <main>${body}</main>
+      <footer>
+        <span>Cùng bạn vượt qua áp lực, kiến tạo tương lai.</span>
+        <strong>${pageNumber}/${totalPages}</strong>
+      </footer>
+    </section>
+  `;
+}
+
+function renderCoverBody({ stats, distribution, statItems, intro }) {
+  return `
+    <section class="summary-card">
+      <h2>Tổng quan</h2>
+      <p>${escapeHtml(intro)}</p>
+      ${renderStatCards(statItems)}
+    </section>
+    <section class="summary-card">
+      <h2>Phân bố cảm xúc</h2>
+      ${renderDistribution(distribution)}
+    </section>
+    <section class="summary-note">
+      <strong>Điểm trung bình ${escapeHtml(stats.avgScore)} / 5</strong>
+      <span>${stats.mostFreq ? `Cảm xúc xuất hiện nhiều nhất: ${escapeHtml(`${stats.mostFreq.emoji || ''} ${stats.mostFreq.label}`.trim())} (${stats.mostFreq.count} lần).` : 'Chưa có cảm xúc nổi bật.'}</span>
+    </section>
+  `;
+}
+
+function buildDocument({ title, subtitle, userName, logs, allMoods, statItems, intro, periodDays }) {
+  const sortedLogs = [...logs].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const stats = buildStats(sortedLogs, allMoods, periodDays);
+  const distribution = moodDistribution(stats, allMoods);
+  const logPages = paginateLogs(sortedLogs);
+  const totalPages = sortedLogs.length ? 1 + logPages.length : 2;
+
+  const pages = [
+    renderPage({
+      title,
+      subtitle,
+      userName,
+      pageNumber: 1,
+      totalPages,
+      body: renderCoverBody({ stats, distribution, statItems, intro }),
+    }),
+  ];
+
+  if (!sortedLogs.length) {
+    pages.push(renderPage({
+      title: 'Nhật ký chi tiết',
+      subtitle,
+      userName,
+      pageNumber: 2,
+      totalPages: 2,
+      compactHeader: true,
+      body: '<section class="empty-state">Không có dữ liệu trong khoảng thời gian này.</section>',
+    }));
+    return pages.join('');
+  }
+
+  logPages.forEach((pageLogs, index) => {
+    pages.push(renderPage({
+      title: 'Nhật ký chi tiết',
+      subtitle: `${subtitle} · ${sortedLogs.length} ghi chú`,
+      userName,
+      pageNumber: index + 2,
+      totalPages,
+      compactHeader: true,
+      body: `<section class="table-wrap">${renderLogTable(pageLogs, allMoods)}</section>`,
+    }));
+  });
+
+  return pages.join('');
+}
+
+function buildMonthDocument({ userName, moodLogs, month, year, allMoods }) {
+  const end = endOfMonth(new Date(year, month, 1));
+  const logs = moodLogs.filter(log => {
+    const date = new Date(log.date);
+    return date.getMonth() === month && date.getFullYear() === year;
+  });
+  const stats = buildStats(logs, allMoods, end.getDate());
+  const monthLabel = `Tháng ${month + 1}/${year}`;
+  return buildDocument({
+    title: `Báo cáo cảm xúc ${monthLabel}`,
+    subtitle: monthLabel,
+    userName,
+    logs,
+    allMoods,
+    periodDays: end.getDate(),
+    intro: `Bản xuất này gom các check-in trong ${monthLabel}, kèm điểm mood, nguyên nhân, chỉ số phụ và số tệp đa phương tiện đã lưu.`,
+    statItems: [
+      { label: 'Ngày có ghi chú', value: `${stats.uniqueDays}/${end.getDate()}` },
+      { label: 'Tổng ghi chú', value: `${stats.totalEntries}` },
+      { label: 'Mood trung bình', value: `${stats.avgScore}/5` },
+      { label: 'Tệp đã lưu', value: `${stats.mediaCount}` },
+      { label: 'Tỉ lệ check-in', value: stats.checkinRate },
+      { label: 'Phổ biến nhất', value: stats.mostFreq ? `${stats.mostFreq.label}` : 'N/A' },
+    ],
+  });
+}
+
+function buildAllDocument({ userName, moodLogs, allMoods }) {
+  if (!moodLogs.length) return null;
+  const sortedLogs = [...moodLogs].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const firstDate = new Date(sortedLogs[0].date);
+  const lastDate = new Date(sortedLogs[sortedLogs.length - 1].date);
+  const months = new Set(sortedLogs.map(log => {
+    const date = new Date(log.date);
+    return `${date.getFullYear()}-${date.getMonth()}`;
+  }));
+  const stats = buildStats(sortedLogs, allMoods);
+
+  return buildDocument({
+    title: 'Toàn bộ nhật ký cảm xúc',
+    subtitle: `${format(firstDate, 'dd/MM/yyyy')} - ${format(lastDate, 'dd/MM/yyyy')}`,
+    userName,
+    logs: sortedLogs,
+    allMoods,
+    intro: 'Bản xuất này tổng hợp toàn bộ lịch sử check-in của bạn theo định dạng đọc được, có phân trang và tóm tắt riêng.',
+    statItems: [
+      { label: 'Tổng ghi chú', value: `${stats.totalEntries}` },
+      { label: 'Ngày có ghi chú', value: `${stats.uniqueDays}` },
+      { label: 'Mood trung bình', value: `${stats.avgScore}/5` },
+      { label: 'Tệp đã lưu', value: `${stats.mediaCount}` },
+      { label: 'Số tháng', value: `${months.size}` },
+      { label: 'Phổ biến nhất', value: stats.mostFreq ? `${stats.mostFreq.label}` : 'N/A' },
+    ],
+  });
+}
+
+const DOCUMENT_STYLES = `
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #e8ecf7; color: #172033; font-family: "Segoe UI", Arial, sans-serif; }
+  .pdf-root { width: ${PAGE_WIDTH}px; }
+  .pdf-page {
+    width: ${PAGE_WIDTH}px;
+    min-height: ${PAGE_HEIGHT}px;
+    padding: 42px 46px 34px;
+    background: #f8f9ff;
+    display: flex;
+    flex-direction: column;
+    page-break-after: always;
+  }
+  .page-header {
+    border-radius: 22px;
+    background: linear-gradient(135deg, #4f63d7 0%, #188b79 100%);
+    color: white;
+    padding: 28px 30px;
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    min-height: 148px;
+    box-shadow: 0 16px 32px rgba(49, 72, 150, 0.22);
+  }
+  .page-header.compact { min-height: auto; padding: 20px 24px; border-radius: 18px; }
+  .page-header span { display: block; font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.82; }
+  .page-header h1 { margin: 8px 0 8px; font-size: 28px; line-height: 1.15; }
+  .page-header.compact h1 { font-size: 22px; }
+  .page-header p { margin: 0; font-size: 13px; line-height: 1.45; opacity: 0.9; }
+  .export-meta { text-align: right; min-width: 170px; align-self: flex-start; }
+  .export-meta strong { display: block; font-size: 14px; margin-bottom: 6px; }
+  main { flex: 1; padding-top: 24px; }
+  h2 { margin: 0 0 12px; font-size: 18px; color: #222b45; }
+  .summary-card, .summary-note, .empty-state {
+    border: 1px solid #dbe2f6;
+    border-radius: 18px;
+    background: white;
+    padding: 20px;
+    margin-bottom: 18px;
+    box-shadow: 0 10px 28px rgba(42, 52, 89, 0.06);
+  }
+  .summary-card p { margin: 0 0 16px; color: #5c6682; line-height: 1.55; }
+  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat-card { border-radius: 14px; background: #f1f4ff; border: 1px solid #dfe6ff; padding: 13px; min-height: 76px; }
+  .stat-card span { display: block; color: #62708f; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+  .stat-card strong { display: block; margin-top: 8px; color: #3342a0; font-size: 20px; line-height: 1.15; }
+  .distribution { display: grid; gap: 8px; }
+  .distribution-row { display: grid; grid-template-columns: minmax(0, 1fr) 78px 48px; align-items: center; gap: 12px; border-radius: 12px; background: #f7f8fd; padding: 10px 12px; }
+  .distribution-row div { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .distribution-row i { width: 10px; height: 10px; border-radius: 999px; flex: 0 0 auto; }
+  .distribution-row span { overflow-wrap: anywhere; }
+  .distribution-row strong, .distribution-row em { color: #4f5ca8; font-size: 12px; font-style: normal; text-align: right; }
+  .summary-note { display: grid; gap: 6px; border-left: 5px solid #55efc4; }
+  .summary-note strong { color: #173c36; font-size: 16px; }
+  .summary-note span, .muted { color: #66708a; line-height: 1.5; }
+  .table-wrap {
+    border: 1px solid #dce3f5;
+    border-radius: 16px;
+    background: white;
+    overflow: hidden;
+    box-shadow: 0 8px 22px rgba(42, 52, 89, 0.06);
+  }
+  .detail-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .detail-table th {
+    background: #eef2ff;
+    color: #37408f;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    padding: 10px 9px;
+    text-align: left;
+    text-transform: uppercase;
+  }
+  .detail-table td {
+    border-top: 1px solid #e4e9f8;
+    color: #2f3a56;
+    font-size: 11.5px;
+    line-height: 1.42;
+    padding: 10px 9px;
+    vertical-align: top;
+  }
+  .detail-table tr:nth-child(even) td { background: #fafbff; }
+  .detail-table tr td:first-child { border-left: 4px solid var(--mood-color); }
+  .col-time { width: 92px; }
+  .col-mood { width: 112px; }
+  .col-meta { width: 170px; }
+  .col-note { width: auto; }
+  .col-time strong,
+  .col-time span,
+  .col-mood b,
+  .col-mood span {
+    display: block;
+  }
+  .col-time strong { color: #27314c; font-size: 11px; }
+  .col-time span { color: #64708f; font-size: 12px; font-weight: 900; margin-top: 4px; }
+  .col-mood b { color: #172033; font-size: 12px; margin-bottom: 5px; overflow-wrap: anywhere; }
+  .col-mood span {
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #4f5ca8;
+    font-size: 10px;
+    font-weight: 900;
+    padding: 3px 7px;
+    width: fit-content;
+  }
+  .col-meta p { margin: 0 0 7px; color: #61708d; font-size: 10.5px; font-weight: 700; }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 7px; }
+  .tags i { border-radius: 999px; background: #eef2ff; color: #4f5ca8; font-size: 9.5px; font-style: normal; font-weight: 800; padding: 3px 6px; }
+  .note-rich { color: #2f3a56; overflow-wrap: anywhere; }
+  .note-line { margin: 0 0 5px; white-space: pre-wrap; }
+  .note-line strong,
+  .note-heading strong,
+  .note-quote strong,
+  .note-check strong { font-weight: 900; color: #172033; }
+  .note-line u,
+  .note-heading u,
+  .note-quote u,
+  .note-check u { text-decoration: underline; text-underline-offset: 2px; }
+  .note-heading {
+    color: #1f2a44;
+    font-weight: 900;
+    margin: 0 0 6px;
+  }
+  .note-heading.level-1 { font-size: 14px; }
+  .note-heading.level-2 { font-size: 13px; }
+  .note-heading.level-3 { font-size: 12px; }
+  .note-check {
+    display: grid;
+    grid-template-columns: 13px 1fr;
+    gap: 5px;
+    margin: 0 0 5px;
+  }
+  .note-check i {
+    border: 1px solid #9aa6c8;
+    border-radius: 3px;
+    color: #188b79;
+    display: grid;
+    font-size: 9px;
+    font-style: normal;
+    font-weight: 900;
+    height: 12px;
+    line-height: 1;
+    place-items: center;
+    width: 12px;
+  }
+  .note-check.checked span { color: #56627e; }
+  .note-quote {
+    border-left: 3px solid #a29bfe;
+    color: #4f5ca8;
+    font-style: italic;
+    margin: 0 0 6px;
+    padding-left: 8px;
+  }
+  .note-space { height: 5px; }
+  footer { border-top: 1px solid #dce3f5; color: #7a849d; display: flex; justify-content: space-between; padding-top: 12px; font-size: 11px; }
+`;
+
+async function renderToPDF(documentHtml, filename) {
   const container = document.createElement('div');
-  container.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1';
-  container.innerHTML = html;
+  container.className = 'pdf-root';
+  container.style.cssText = 'position:fixed;left:-10000px;top:0;z-index:-1';
+  container.innerHTML = `<style>${DOCUMENT_STYLES}</style>${documentHtml}`;
   document.body.appendChild(container);
 
   try {
-    const canvas = await html2canvas(container, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: '#ffffff',
-      windowWidth: 794 + 64, // width + padding
-    });
-    const imgData = canvas.toDataURL('image/png');
+    const pages = Array.from(container.querySelectorAll('.pdf-page'));
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
-    const imgH = (canvas.height * pageW) / canvas.width;
 
-    let y = 0;
-    while (y < imgH) {
-      if (y > 0) pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, -y, pageW, imgH);
-      y += pageH;
+    for (let index = 0; index < pages.length; index += 1) {
+      const canvas = await html2canvas(pages[index], {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#f8f9ff',
+        windowWidth: PAGE_WIDTH,
+        windowHeight: PAGE_HEIGHT,
+      });
+      const imgData = canvas.toDataURL('image/jpeg', 0.96);
+      if (index > 0) pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, 0, pageW, pageH);
     }
+
     pdf.save(filename);
   } finally {
     document.body.removeChild(container);
   }
 }
 
-// ── Export theo tháng ─────────────────────────────────────────────────────
 export async function exportMoodPDF({ userName, moodLogs, month, year, allMoods }) {
-  const html = buildMonthHTML({ userName, moodLogs, month, year, allMoods });
-  await renderToPDF(html, `MindBuddy_T${month + 1}-${year}.pdf`);
+  const documentHtml = buildMonthDocument({ userName, moodLogs, month, year, allMoods });
+  await renderToPDF(documentHtml, `MindBuddy_T${month + 1}-${year}.pdf`);
 }
 
-// ── Export toàn bộ ────────────────────────────────────────────────────────
 export async function exportAllMoodPDF({ userName, moodLogs, allMoods }) {
-  const html = buildAllHTML({ userName, moodLogs, allMoods });
-  if (!html) return;
-  await renderToPDF(html, `MindBuddy_ToanBo_${format(new Date(), 'ddMMyyyy')}.pdf`);
+  const documentHtml = buildAllDocument({ userName, moodLogs, allMoods });
+  if (!documentHtml) return;
+  await renderToPDF(documentHtml, `MindBuddy_ToanBo_${format(new Date(), 'ddMMyyyy')}.pdf`);
 }

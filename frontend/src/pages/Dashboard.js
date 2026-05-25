@@ -7,14 +7,25 @@ import { vi } from 'date-fns/locale';
 import NotificationSettings from '../components/NotificationSettings';
 import WeeklyInsight from '../components/WeeklyInsight';
 import CrisisPanel from '../components/CrisisPanel';
+import RichText from '../components/RichText';
+import MediaAttachments from '../components/MediaAttachments';
 import { analyzeMood, detectDanger, summarizeDay } from '../utils/aiService';
-import { uploadMoodImage } from '../utils/imageUpload';
+import { uploadMoodFiles } from '../utils/imageUpload';
+import { normalizeMoodAttachments } from '../utils/moodImages';
 import './Dashboard.css';
 
 const GOALS = [
   { id: 'stress', label: 'Giảm stress', desc: 'Ưu tiên hạ căng thẳng và ổn định cảm xúc.' },
   { id: 'sleep', label: 'Ngủ tốt hơn', desc: 'Ưu tiên nhịp sinh hoạt và nghỉ ngơi.' },
   { id: 'study', label: 'Tập trung học tập', desc: 'Ưu tiên năng lượng, Pomodoro và kế hoạch học.' },
+];
+
+const QUICK_FORMAT_TOOLS = [
+  { id: 'bold', label: 'B', title: 'Bôi đậm', prefix: '**', suffix: '**', sample: 'nội dung quan trọng' },
+  { id: 'underline', label: 'U', title: 'Gạch chân', prefix: '<u>', suffix: '</u>', sample: 'điều cần nhớ' },
+  { id: 'heading', label: 'H', title: 'Tiêu đề', linePrefix: '## ', sample: 'Tiêu đề nhỏ' },
+  { id: 'checklist', label: '☑', title: 'Checklist', linePrefix: '- [ ] ', sample: 'việc nhỏ cần làm' },
+  { id: 'quote', label: '❝', title: 'Trích dẫn', linePrefix: '> ', sample: 'một câu mình muốn giữ lại' },
 ];
 
 const ENERGY_BUCKETS = [
@@ -64,10 +75,12 @@ export default function Dashboard() {
   const [showCrisis, setShowCrisis] = React.useState(false);
   const [selectedDayDetail, setSelectedDayDetail] = React.useState(null);
   const [selectedMemory, setSelectedMemory] = React.useState(null);
-  const [quickImageFile, setQuickImageFile] = React.useState(null);
-  const [quickImagePreview, setQuickImagePreview] = React.useState('');
+  const [quickImageFiles, setQuickImageFiles] = React.useState([]);
+  const [quickImagePreviews, setQuickImagePreviews] = React.useState([]);
   const [quickImageError, setQuickImageError] = React.useState('');
   const quickImageInputRef = React.useRef(null);
+  const quickImagePreviewsRef = React.useRef([]);
+  const quickNoteRef = React.useRef(null);
 
   const today = new Date();
   const allMoods = React.useMemo(
@@ -110,18 +123,22 @@ export default function Dashboard() {
 
   const recentPhotoLogs = React.useMemo(() => (
     moodLogs
-      .map(log => {
+      .flatMap(log => {
         const mood = allMoods.find(m => m.id === log.mood);
-        const imageUrl = log.image?.url || log.imageUrl;
+        const attachments = normalizeMoodAttachments(log);
         const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
         const causeTags = log.note?.match(/\[(.+)\]$/)?.[1]?.split(', ') || [];
-        return {
+        return attachments.map((attachment, attachmentIndex) => ({
           ...log,
+          photoId: `${log.id}-${attachmentIndex}`,
           mood,
-          imageUrl,
+          imageUrl: attachment.url,
+          attachment,
+          attachmentIndex,
+          attachments,
           cleanNote,
           causeTags,
-        };
+        }));
       })
       .filter(log => log.imageUrl)
       .sort((a, b) => new Date(b.date) - new Date(a.date))
@@ -257,34 +274,91 @@ export default function Dashboard() {
   })();
 
   React.useEffect(() => {
-    return () => {
-      if (quickImagePreview) URL.revokeObjectURL(quickImagePreview);
-    };
-  }, [quickImagePreview]);
+    quickImagePreviewsRef.current = quickImagePreviews;
+  }, [quickImagePreviews]);
+
+  React.useEffect(() => () => {
+    quickImagePreviewsRef.current.forEach(item => URL.revokeObjectURL(item.url));
+  }, []);
 
   const handleQuickImageSelect = (event) => {
-    const file = event.target.files?.[0];
+    const files = Array.from(event.target.files || []);
     setQuickImageError('');
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setQuickImageError('Vui lòng chọn file ảnh.');
+    if (!files.length) return;
+    const isSupported = file => file.type.startsWith('image/') || file.type.startsWith('video/') || file.type.startsWith('audio/');
+    if (files.some(file => !isSupported(file))) {
+      setQuickImageError('Vui lòng chọn ảnh, video hoặc âm thanh.');
       return;
     }
-    if (file.size > 8 * 1024 * 1024) {
-      setQuickImageError('Ảnh tối đa 8MB.');
+    if (files.some(file => file.type.startsWith('image/') && file.size > 8 * 1024 * 1024)) {
+      setQuickImageError('Mỗi ảnh tối đa 8MB.');
       return;
     }
-    if (quickImagePreview) URL.revokeObjectURL(quickImagePreview);
-    setQuickImageFile(file);
-    setQuickImagePreview(URL.createObjectURL(file));
+    if (files.some(file => file.type.startsWith('audio/') && file.size > 25 * 1024 * 1024)) {
+      setQuickImageError('Mỗi tệp âm thanh tối đa 25MB.');
+      return;
+    }
+    if (files.some(file => file.type.startsWith('video/') && file.size > 100 * 1024 * 1024)) {
+      setQuickImageError('Mỗi video tối đa 100MB.');
+      return;
+    }
+    const previews = files.map(file => ({
+      id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
+      url: URL.createObjectURL(file),
+      file,
+    }));
+    setQuickImageFiles(prev => [...prev, ...files]);
+    setQuickImagePreviews(prev => [...prev, ...previews]);
+    if (quickImageInputRef.current) quickImageInputRef.current.value = '';
   };
 
-  const clearQuickImage = () => {
-    if (quickImagePreview) URL.revokeObjectURL(quickImagePreview);
-    setQuickImageFile(null);
-    setQuickImagePreview('');
+  const removeQuickImage = (index) => {
+    setQuickImagePreviews(prev => {
+      const target = prev[index];
+      if (target?.url) URL.revokeObjectURL(target.url);
+      return prev.filter((_, i) => i !== index);
+    });
+    setQuickImageFiles(prev => prev.filter((_, i) => i !== index));
     setQuickImageError('');
     if (quickImageInputRef.current) quickImageInputRef.current.value = '';
+  };
+
+  const clearQuickImages = () => {
+    quickImagePreviews.forEach(item => URL.revokeObjectURL(item.url));
+    setQuickImageFiles([]);
+    setQuickImagePreviews([]);
+    setQuickImageError('');
+    if (quickImageInputRef.current) quickImageInputRef.current.value = '';
+  };
+
+  const applyQuickNoteFormat = (tool) => {
+    const textarea = quickNoteRef.current;
+    const currentNote = quickNote || '';
+    const start = textarea?.selectionStart ?? currentNote.length;
+    const end = textarea?.selectionEnd ?? currentNote.length;
+    const selectedText = currentNote.slice(start, end);
+    let insertText;
+    let nextCursorStart;
+    let nextCursorEnd;
+
+    if (tool.linePrefix) {
+      const lineStart = currentNote.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+      const needsNewLine = lineStart !== start && currentNote.slice(lineStart, start).trim().length > 0;
+      const prefix = needsNewLine ? `\n${tool.linePrefix}` : tool.linePrefix;
+      insertText = `${prefix}${selectedText || tool.sample}`;
+      nextCursorStart = start + prefix.length;
+      nextCursorEnd = nextCursorStart + (selectedText || tool.sample).length;
+    } else {
+      insertText = `${tool.prefix}${selectedText || tool.sample}${tool.suffix}`;
+      nextCursorStart = start + tool.prefix.length;
+      nextCursorEnd = nextCursorStart + (selectedText || tool.sample).length;
+    }
+
+    setQuickNote(`${currentNote.slice(0, start)}${insertText}${currentNote.slice(end)}`);
+    window.setTimeout(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(nextCursorStart, nextCursorEnd);
+    }, 0);
   };
 
   const handleQuickCheckin = async () => {
@@ -300,19 +374,19 @@ export default function Dashboard() {
     setQuickImageError('');
     let imagePayload = null;
     try {
-      if (quickImageFile) {
-        imagePayload = await uploadMoodImage({ file: quickImageFile, user, namespace: 'quick-checkins' });
+      if (quickImageFiles.length > 0) {
+        imagePayload = await uploadMoodFiles({ files: quickImageFiles, user, namespace: 'quick-checkins' });
       }
     } catch (err) {
-      console.error('Quick image upload error:', err);
-      setQuickImageError(err.message || 'Không thể lưu ảnh check-in.');
+      console.error('Quick media upload error:', err);
+      setQuickImageError(err.message || 'Không thể lưu tệp check-in.');
       setQuickAnalyzing(false);
       return;
     }
     await addMoodLog(quickMood, note, null, imagePayload);
     setQuickMood(null);
     setQuickNote('');
-    clearQuickImage();
+    clearQuickImages();
     setQuickFeedback('Đã ghi lại hôm nay. MindBuddy đang phân tích nhanh cho bạn...');
 
     try {
@@ -421,6 +495,7 @@ export default function Dashboard() {
           </div>
 
           <textarea
+            ref={quickNoteRef}
             value={quickNote}
             onChange={e => {
               setQuickNote(e.target.value);
@@ -430,21 +505,52 @@ export default function Dashboard() {
             placeholder="Điều gì đang ảnh hưởng tới bạn hôm nay?"
             aria-label="Ghi chú cảm xúc nhanh"
           />
+          <div className="quick-format-toolbar" aria-label="Định dạng ghi chú nhanh">
+            {QUICK_FORMAT_TOOLS.map(tool => (
+              <button
+                key={tool.id}
+                type="button"
+                className={`quick-format-btn ${tool.id}`}
+                onClick={() => applyQuickNoteFormat(tool)}
+                title={tool.title}
+                aria-label={tool.title}
+              >
+                {tool.label}
+              </button>
+            ))}
+          </div>
+          {quickNote.trim() && (
+            <div className="quick-note-preview">
+              <span>Xem trước ghi chú</span>
+              <RichText text={quickNote} className="quick-note-preview-content" />
+            </div>
+          )}
           <div className="quick-photo-field">
             <input
               ref={quickImageInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,video/*,audio/*"
+              multiple
               onChange={handleQuickImageSelect}
               hidden
             />
             <button type="button" className="quick-photo-btn" onClick={() => quickImageInputRef.current?.click()}>
-              📷 Thêm ảnh
+              Thêm tệp
             </button>
-            {quickImagePreview && (
-              <div className="quick-photo-preview">
-                <img src={quickImagePreview} alt="Ảnh check-in xem trước" />
-                <button type="button" onClick={clearQuickImage}>Bỏ ảnh</button>
+            {quickImagePreviews.length > 0 && (
+              <div className="quick-photo-preview-grid">
+                {quickImagePreviews.map((preview, index) => (
+                  <div key={preview.id} className="quick-photo-preview">
+                    {preview.file?.type.startsWith('video/') ? (
+                      <video src={preview.url} muted preload="metadata" />
+                    ) : preview.file?.type.startsWith('audio/') ? (
+                      <div className="media-file-preview"><span>{preview.file.name}</span></div>
+                    ) : (
+                      <img src={preview.url} alt={`Tệp check-in xem trước ${index + 1}`} />
+                    )}
+                    <button type="button" onClick={() => removeQuickImage(index)}>Bỏ tệp</button>
+                  </div>
+                ))}
               </div>
             )}
             {quickImageError && <p className="quick-photo-error" role="alert">{quickImageError}</p>}
@@ -511,24 +617,30 @@ export default function Dashboard() {
       <section className="card recent-memories-card">
         <div className="section-heading-row">
           <div>
-            <h3>Ảnh gần đây</h3>
-            <p className="text-muted">Bấm vào ảnh để mở lại cảm xúc và ghi chú đi kèm.</p>
+            <h3>Tệp gần đây</h3>
+            <p className="text-muted">Bấm vào tệp để mở lại cảm xúc và ghi chú đi kèm.</p>
           </div>
           <Link to="/mood?tab=history" className="quick-link">Mở lịch sử</Link>
         </div>
 
         {recentPhotoLogs.length > 0 ? (
-          <div className="memory-photo-strip" aria-label="Ảnh check-in gần đây">
+          <div className="memory-photo-strip" aria-label="Tệp check-in gần đây">
             {recentPhotoLogs.map(log => (
               <button
-                key={log.id}
+                key={log.photoId}
                 type="button"
                 className="memory-photo-tile"
                 onClick={() => setSelectedMemory(log)}
-                aria-label={`Mở ghi chú ảnh ngày ${format(new Date(log.date), 'dd/MM/yyyy')} lúc ${format(new Date(log.date), 'HH:mm')}`}
+                aria-label={`Mở ghi chú tệp ngày ${format(new Date(log.date), 'dd/MM/yyyy')} lúc ${format(new Date(log.date), 'HH:mm')}`}
               >
-                <img src={log.imageUrl} alt={`Ảnh check-in ${log.mood?.label || 'không rõ'} lúc ${format(new Date(log.date), 'HH:mm')}`} />
-                <span>{format(new Date(log.date), 'dd/MM')}</span>
+                {log.attachment?.kind === 'video' ? (
+                  <video src={log.imageUrl} muted preload="metadata" />
+                ) : log.attachment?.kind === 'audio' ? (
+                  <div className="memory-media-placeholder">Audio</div>
+                ) : (
+                  <img src={log.imageUrl} alt={`Tệp check-in ${log.mood?.label || 'không rõ'} lúc ${format(new Date(log.date), 'HH:mm')}`} />
+                )}
+                <span>{format(new Date(log.date), 'dd/MM')}{log.attachments.length > 1 ? ` · ${log.attachmentIndex + 1}/${log.attachments.length}` : ''}</span>
                 <strong>{log.mood?.emoji} {log.mood?.label || 'Không rõ'}</strong>
               </button>
             ))}
@@ -537,8 +649,8 @@ export default function Dashboard() {
           <div className="memory-empty">
             <span aria-hidden="true">🖼️</span>
             <div>
-              <strong>Chưa có ảnh check-in</strong>
-              <p>Lần tới khi ghi cảm xúc, thêm một ảnh nhỏ để MindBuddy lưu lại ngữ cảnh của ngày đó.</p>
+              <strong>Chưa có tệp check-in</strong>
+              <p>Lần tới khi ghi cảm xúc, thêm một ảnh, video hoặc ghi âm ngắn để MindBuddy lưu lại ngữ cảnh của ngày đó.</p>
             </div>
           </div>
         )}
@@ -772,7 +884,7 @@ export default function Dashboard() {
                 const mood = allMoods.find(m => m.id === log.mood);
                 const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
                 const causeTags = log.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
-                const imageUrl = log.image?.url || log.imageUrl;
+                const attachments = normalizeMoodAttachments(log);
                 return (
                   <div key={log.id} className="dashboard-day-entry" style={{ '--entry-color': mood?.color || '#ccc' }}>
                     <div className="dashboard-day-entry-head">
@@ -784,8 +896,12 @@ export default function Dashboard() {
                         {causeTags.map(tag => <span key={tag}>{tag}</span>)}
                       </div>
                     )}
-                    {imageUrl && <img className="dashboard-day-photo" src={imageUrl} alt={`Ảnh check-in lúc ${format(new Date(log.date), 'HH:mm')}`} />}
-                    <p>{cleanNote || 'Không có ghi chú thêm.'}</p>
+                    <MediaAttachments
+                      attachments={attachments}
+                      label={`Tệp check-in lúc ${format(new Date(log.date), 'HH:mm')}`}
+                      compact
+                    />
+                    <RichText text={cleanNote} fallback="Không có ghi chú thêm." className="dashboard-note-text" />
                   </div>
                 );
               })}
@@ -802,7 +918,10 @@ export default function Dashboard() {
               <button onClick={() => setSelectedMemory(null)} aria-label="Đóng ảnh ký ức">×</button>
             </div>
             <div className="memory-detail-body">
-              <img src={selectedMemory.imageUrl} alt={`Ảnh check-in lúc ${format(new Date(selectedMemory.date), 'HH:mm')}`} />
+              <MediaAttachments
+                attachments={selectedMemory.attachments?.length ? selectedMemory.attachments : [selectedMemory.attachment]}
+                label={`Tệp check-in lúc ${format(new Date(selectedMemory.date), 'HH:mm')}`}
+              />
               <div className="memory-detail-note" style={{ '--entry-color': selectedMemory.mood?.color || '#a29bfe' }}>
                 <div className="dashboard-day-entry-head">
                   <span>{selectedMemory.mood?.emoji} {selectedMemory.mood?.label || 'Không rõ'}</span>
@@ -813,7 +932,7 @@ export default function Dashboard() {
                     {selectedMemory.causeTags.map(tag => <span key={tag}>{tag}</span>)}
                   </div>
                 )}
-                <p>{selectedMemory.cleanNote || 'Không có ghi chú thêm.'}</p>
+                <RichText text={selectedMemory.cleanNote} fallback="Không có ghi chú thêm." className="dashboard-note-text" />
                 <Link to="/mood?tab=history" className="quick-link" onClick={() => setSelectedMemory(null)}>Xem trong lịch sử</Link>
               </div>
             </div>

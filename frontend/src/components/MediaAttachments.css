@@ -1,0 +1,71 @@
+.media-attachments {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(138px, 220px));
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.media-attachments.compact {
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+}
+
+.media-attachment {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.media-attachment.image {
+  padding: 0;
+  cursor: zoom-in;
+}
+
+.media-attachment.image.static {
+  cursor: default;
+}
+
+.media-attachment.image img,
+.media-attachment.video video {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+  background: #050711;
+}
+
+.media-attachment.image:hover img,
+.media-attachment.image:focus-visible img {
+  outline: 3px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  outline-offset: -3px;
+}
+
+.media-attachment.video,
+.media-attachment.audio,
+.media-attachment.file {
+  padding: 10px;
+}
+
+.media-attachment.video span,
+.media-attachment.audio span,
+.media-attachment.file {
+  color: var(--text-muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.media-attachment.audio audio {
+  width: 100%;
+  margin-top: 8px;
+}
+
+[data-theme="dark"] .media-attachment {
+  background: var(--bg);
+  border-color: var(--border);
+}
