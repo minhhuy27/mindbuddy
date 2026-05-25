@@ -4,6 +4,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, increment } from 'firebase/firestore';
 import { deleteObject, ref as storageRef } from 'firebase/storage';
 import { storage } from '../firebase';
+import { normalizeMoodAttachments, normalizeMoodImages } from '../utils/moodImages';
 
 const AppContext = createContext();
 
@@ -33,6 +34,7 @@ const DEFAULT_DATA = {
   aiMemory: [],
   meditateCount: 0,
   customMoods: [],
+  causeOptions: null,
   userGoal: 'stress',
   dailyReviews: {},
   weeklyInsight: null, // { text, logCount, savedAt }
@@ -121,12 +123,18 @@ export function AppProvider({ children }) {
     if (user) await updateDoc(userRef(user.uid), { gardenLevel: next });
   };
 
-  const formatImageFields = (image) => {
-    if (!image) return {};
+  const formatImageFields = (imageInput) => {
+    if (!imageInput) return {};
+    const attachments = normalizeMoodAttachments(Array.isArray(imageInput) ? imageInput : [imageInput]);
+    const images = normalizeMoodImages(attachments);
+    const image = images[0] || null;
+    if (!attachments.length) return {};
     return {
+      attachments,
+      images,
       image,
-      imageUrl: image.url || '',
-      imagePath: image.path || '',
+      imageUrl: image?.url || '',
+      imagePath: image?.path || '',
     };
   };
 
@@ -139,8 +147,8 @@ export function AppProvider({ children }) {
     }
   };
 
-  const addMoodLog = async (mood, note, metrics = null, image = null) => {
-    const log = { id: Date.now(), mood, note, metrics, ...formatImageFields(image), date: new Date().toISOString() };
+  const addMoodLog = async (mood, note, metrics = null, images = null) => {
+    const log = { id: Date.now(), mood, note, metrics, ...formatImageFields(images), date: new Date().toISOString() };
     const next = [log, ...data.moodLogs];
     setData(prev => ({ ...prev, moodLogs: next }));
     if (user) await updateDoc(userRef(user.uid), { moodLogs: next });
@@ -155,23 +163,27 @@ export function AppProvider({ children }) {
   };
 
   // Cập nhật một log cụ thể theo id
-  const updateMoodLog = async (id, mood, note, metrics = null, image) => {
+  const updateMoodLog = async (id, mood, note, metrics = null, images) => {
     const current = data.moodLogs.find(l => l.id === id);
+    const currentAttachments = normalizeMoodAttachments(current);
+    const nextAttachments = images && images !== null ? normalizeMoodAttachments(Array.isArray(images) ? images : [images]) : [];
     const next = data.moodLogs.map(l => {
       if (l.id !== id) return l;
       const base = { ...l, mood, note, metrics };
-      if (image === undefined) return base;
-      if (image === null) {
-        const { image: _image, imageUrl: _imageUrl, imagePath: _imagePath, ...withoutImage } = base;
+      if (images === undefined) return base;
+      if (images === null) {
+        const { attachments: _attachments, images: _images, image: _image, imageUrl: _imageUrl, imagePath: _imagePath, ...withoutImage } = base;
         return withoutImage;
       }
-      return { ...base, ...formatImageFields(image) };
+      return { ...base, ...formatImageFields(nextAttachments) };
     });
     setData(prev => ({ ...prev, moodLogs: next }));
     if (user) await updateDoc(userRef(user.uid), { moodLogs: next });
-    if ((image === null || image?.path) && current?.imagePath && current.imagePath !== image?.path) {
-      deleteMoodImage(current.imagePath);
-    }
+    if (images === undefined) return;
+    const nextPaths = new Set(nextAttachments.map(attachment => attachment.path).filter(Boolean));
+    currentAttachments.forEach(attachment => {
+      if (attachment.path && !nextPaths.has(attachment.path)) deleteMoodImage(attachment.path);
+    });
   };
 
   // Xóa một log theo id
@@ -180,14 +192,16 @@ export function AppProvider({ children }) {
     const next = data.moodLogs.filter(l => l.id !== id);
     setData(prev => ({ ...prev, moodLogs: next }));
     if (user) await updateDoc(userRef(user.uid), { moodLogs: next });
-    if (current?.imagePath) deleteMoodImage(current.imagePath);
+    normalizeMoodAttachments(current).forEach(attachment => {
+      if (attachment.path) deleteMoodImage(attachment.path);
+    });
   };
 
   // Giữ lại updateTodayMood để tương thích
-  const updateTodayMood = async (mood, note, metrics = null, image) => {
+  const updateTodayMood = async (mood, note, metrics = null, images) => {
     const todayLogs = data.moodLogs.filter(l => new Date(l.date).toDateString() === new Date().toDateString());
     if (todayLogs.length === 0) return;
-    await updateMoodLog(todayLogs[0].id, mood, note, metrics, image);
+    await updateMoodLog(todayLogs[0].id, mood, note, metrics, images);
   };
 
   const incrementPomodoro = async () => {
@@ -235,6 +249,11 @@ export function AppProvider({ children }) {
     if (user) await updateDoc(userRef(user.uid), { customMoods: next });
   };
 
+  const saveCauseOptions = async (next) => {
+    const normalized = [...new Set((next || []).map(c => String(c).trim()).filter(Boolean))];
+    await save({ causeOptions: normalized });
+  };
+
   const todayMood = data.moodLogs.find(l => new Date(l.date).toDateString() === new Date().toDateString());
 
   if (user === undefined) return (
@@ -253,6 +272,7 @@ export function AppProvider({ children }) {
       incrementMeditate,
       addConfession, hugConfession,
       addCustomMood, deleteCustomMood,
+      saveCauseOptions,
       growGarden,
       setEmergencyContact: (v) => save({ emergencyContact: v }),
       setUserGoal: (v) => save({ userGoal: v, weeklyInsight: null, todayAI: null }),

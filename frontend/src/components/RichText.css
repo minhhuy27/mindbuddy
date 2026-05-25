@@ -1,0 +1,100 @@
+.rich-text {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.rich-text p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.rich-text p + p,
+.rich-text p + blockquote,
+.rich-text blockquote + p,
+.rich-text .rich-checklist + p {
+  margin-top: 7px;
+}
+
+.rich-text strong {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.rich-text u {
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.rich-heading {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.35;
+  margin: 0 0 6px;
+}
+
+.rich-text h4.rich-heading {
+  font-size: 14px;
+}
+
+.rich-text h5.rich-heading {
+  font-size: 13px;
+}
+
+.rich-text blockquote {
+  margin: 7px 0;
+  border-left: 3px solid var(--primary);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--bg));
+  color: var(--text);
+  padding: 8px 10px;
+}
+
+.rich-checklist {
+  list-style: none;
+  margin: 7px 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.rich-checklist li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+}
+
+.rich-checklist li > span {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 5px;
+  background: var(--card);
+  color: var(--primary);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.rich-checklist li.checked p {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.rich-space {
+  height: 6px;
+}
+
+[data-theme="dark"] .rich-text blockquote {
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+}
+
+[data-theme="dark"] .rich-checklist li > span {
+  background: var(--bg);
+  border-color: var(--border);
+}

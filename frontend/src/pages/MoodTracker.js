@@ -6,11 +6,14 @@ import { format, isToday, isYesterday, subDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { analyzeMood, createChat, detectDanger, summarizeDay } from '../utils/aiService';
 import { exportMoodPDF, exportAllMoodPDF } from '../utils/exportPDF';
-import { uploadMoodImage } from '../utils/imageUpload';
+import { uploadMoodFiles } from '../utils/imageUpload';
+import { normalizeMoodAttachments } from '../utils/moodImages';
 import CrisisPanel from '../components/CrisisPanel';
+import RichText from '../components/RichText';
+import MediaAttachments from '../components/MediaAttachments';
 import './MoodTracker.css';
 
-const CAUSES = ['Học tập', 'Thi cử', 'Tài chính', 'Bạn bè', 'Gia đình', 'Sức khỏe', 'Tình yêu', 'Khác'];
+const DEFAULT_CAUSES = ['Học tập', 'Thi cử', 'Tài chính', 'Bạn bè', 'Gia đình', 'Sức khỏe', 'Tình yêu', 'Khác'];
 
 const METRIC_FIELDS = [
   { id: 'stress', label: 'Stress', low: 'Rất nhẹ', high: 'Rất căng', invert: true },
@@ -46,12 +49,7 @@ function metricSummary(metrics) {
   return METRIC_FIELDS.map(field => `${field.label}: ${normalized[field.id]}/5`).join(', ');
 }
 
-function logImage(log) {
-  if (!log) return null;
-  if (log.image?.url) return log.image;
-  if (log.imageUrl) return { url: log.imageUrl, path: log.imagePath || '', name: 'Ảnh check-in' };
-  return null;
-}
+const logAttachments = normalizeMoodAttachments;
 
 // Bảng emoji gợi ý cho custom mood
 const EMOJI_SUGGESTIONS = [
@@ -115,6 +113,14 @@ const COLOR_PRESETS = [
   '#55efc4','#74b9ff','#a29bfe','#fdcb6e','#fd79a8',
   '#e17055','#00cec9','#6c5ce7','#e84393','#f9ca24',
   '#f0932b','#6ab04c','#eb4d4b','#7ed6df','#c7ecee',
+];
+
+const FORMAT_TOOLS = [
+  { id: 'bold', label: 'B', title: 'Bôi đậm', prefix: '**', suffix: '**', sample: 'nội dung quan trọng' },
+  { id: 'underline', label: 'U', title: 'Gạch chân', prefix: '<u>', suffix: '</u>', sample: 'điều cần nhớ' },
+  { id: 'heading', label: 'H', title: 'Tiêu đề', linePrefix: '## ', sample: 'Tiêu đề nhỏ' },
+  { id: 'checklist', label: '☑', title: 'Checklist', linePrefix: '- [ ] ', sample: 'việc nhỏ cần làm' },
+  { id: 'quote', label: '❝', title: 'Trích dẫn', linePrefix: '> ', sample: 'một câu mình muốn giữ lại' },
 ];
 
 function groupByDay(logs) {
@@ -244,6 +250,7 @@ export default function MoodTracker() {
     addMoodLog, updateMoodLog, deleteMoodLog,
     addCustomMood, deleteCustomMood,
     user, todayAI, saveTodayAI, aiMemory, saveAiMemory, userGoal,
+    causeOptions, saveCauseOptions,
   } = useApp();
 
   // Tất cả moods = built-in + custom
@@ -272,14 +279,20 @@ export default function MoodTracker() {
   const [draftStatus, setDraftStatus] = useState('');
   const [draftReady, setDraftReady] = useState(false);
   const [showNoteIcons, setShowNoteIcons] = useState(false);
-  const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState('');
-  const [existingImage, setExistingImage] = useState(null);
+  const [causeEditorOpen, setCauseEditorOpen] = useState(false);
+  const [newCause, setNewCause] = useState('');
+  const [editingCause, setEditingCause] = useState('');
+  const [editingCauseValue, setEditingCauseValue] = useState('');
+  const [causeError, setCauseError] = useState('');
+  const [imageFiles, setImageFiles] = useState([]);
+  const [imagePreviews, setImagePreviews] = useState([]);
+  const [existingImages, setExistingImages] = useState([]);
   const [removeExistingImage, setRemoveExistingImage] = useState(false);
   const [imageError, setImageError] = useState('');
   const [photoLightbox, setPhotoLightbox] = useState(null);
   const noteTextareaRef = React.useRef(null);
   const imageInputRef = React.useRef(null);
+  const imagePreviewsRef = React.useRef([]);
 
   // ── Custom mood modal ──
   const [showModal, setShowModal] = useState(false);
@@ -311,13 +324,16 @@ export default function MoodTracker() {
   const [exporting, setExporting] = useState(false); // 'month' | 'all' | false
   const [historyRange, setHistoryRange] = useState(14);
   const [selectedDayDetail, setSelectedDayDetail] = useState(null);
+  const activeCauses = React.useMemo(() => (
+    Array.isArray(causeOptions) ? causeOptions : DEFAULT_CAUSES
+  ), [causeOptions]);
 
   const viewedMonth = new Date(exportYear, exportMonth, 1);
   const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const isCurrentMonthSelected = viewedMonth.getTime() === currentMonth.getTime();
   const isAtOrAfterCurrentMonth = viewedMonth.getTime() >= currentMonth.getTime();
   const hasMetricDraft = Object.keys(DEFAULT_METRICS).some(key => metrics[key] !== DEFAULT_METRICS[key]);
-  const hasImageDraft = !!imageFile;
+  const hasImageDraft = imageFiles.length > 0;
   const hasDraftContent = !editingId && (!!selected || note.trim().length > 0 || causes.length > 0 || hasMetricDraft || hasImageDraft);
 
   const moveCalendarMonth = (offset) => {
@@ -392,7 +408,7 @@ export default function MoodTracker() {
     }, 450);
 
     return () => window.clearTimeout(timeout);
-  }, [selected, note, causes, metrics, hasMetricDraft, imageFile, editingId, draftReady, todayDraftKey]);
+  }, [selected, note, causes, metrics, hasMetricDraft, imageFiles, editingId, draftReady, todayDraftKey]);
 
   // Tự động tóm tắt ngày hôm qua nếu chưa có trong memory
   React.useEffect(() => {
@@ -444,6 +460,60 @@ export default function MoodTracker() {
     prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]
   );
 
+  const saveCausesSafely = async (next) => {
+    setCauseError('');
+    await saveCauseOptions(next);
+  };
+
+  const addCauseOption = async () => {
+    const value = newCause.trim();
+    if (!value) return;
+    if (activeCauses.some(c => c.toLowerCase() === value.toLowerCase())) {
+      setCauseError('Nguyên nhân này đã có trong danh sách.');
+      return;
+    }
+    await saveCausesSafely([...activeCauses, value]);
+    setNewCause('');
+  };
+
+  const startEditCause = (cause) => {
+    setEditingCause(cause);
+    setEditingCauseValue(cause);
+    setCauseError('');
+  };
+
+  const saveEditedCause = async () => {
+    const value = editingCauseValue.trim();
+    if (!editingCause || !value) return;
+    if (activeCauses.some(c => c !== editingCause && c.toLowerCase() === value.toLowerCase())) {
+      setCauseError('Tên nguyên nhân này đã tồn tại.');
+      return;
+    }
+    const next = activeCauses.map(c => c === editingCause ? value : c);
+    await saveCausesSafely(next);
+    setCauses(prev => prev.map(c => c === editingCause ? value : c));
+    setEditingCause('');
+    setEditingCauseValue('');
+  };
+
+  const deleteCauseOption = async (cause) => {
+    const next = activeCauses.filter(c => c !== cause);
+    await saveCausesSafely(next);
+    setCauses(prev => prev.filter(c => c !== cause));
+    if (editingCause === cause) {
+      setEditingCause('');
+      setEditingCauseValue('');
+    }
+  };
+
+  const resetCauseOptions = async () => {
+    await saveCausesSafely(DEFAULT_CAUSES);
+    setCauses(prev => prev.filter(c => DEFAULT_CAUSES.includes(c)));
+    setEditingCause('');
+    setEditingCauseValue('');
+    setNewCause('');
+  };
+
   const updateMetric = (id, value) => {
     setMetrics(prev => ({ ...prev, [id]: Number(value) }));
   };
@@ -455,20 +525,22 @@ export default function MoodTracker() {
     setMetrics(DEFAULT_METRICS);
     setEditingId(null);
     setShowNoteIcons(false);
-    setImageFile(null);
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setImagePreview('');
-    setExistingImage(null);
+    imagePreviews.forEach(item => URL.revokeObjectURL(item.url));
+    setImageFiles([]);
+    setImagePreviews([]);
+    setExistingImages([]);
     setRemoveExistingImage(false);
     setImageError('');
     if (imageInputRef.current) imageInputRef.current.value = '';
   };
 
   React.useEffect(() => {
-    return () => {
-      if (imagePreview) URL.revokeObjectURL(imagePreview);
-    };
-  }, [imagePreview]);
+    imagePreviewsRef.current = imagePreviews;
+  }, [imagePreviews]);
+
+  React.useEffect(() => () => {
+    imagePreviewsRef.current.forEach(item => URL.revokeObjectURL(item.url));
+  }, []);
 
   React.useEffect(() => {
     if (!photoLightbox) return undefined;
@@ -480,33 +552,47 @@ export default function MoodTracker() {
   }, [photoLightbox]);
 
   const handleImageSelect = (event) => {
-    const file = event.target.files?.[0];
+    const files = Array.from(event.target.files || []);
     setImageError('');
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setImageError('Vui lòng chọn file ảnh.');
+    if (!files.length) return;
+    const invalid = files.find(file => !file.type.startsWith('image/') && !file.type.startsWith('video/') && !file.type.startsWith('audio/'));
+    if (invalid) {
+      setImageError('Chỉ hỗ trợ ảnh, video hoặc tệp âm thanh.');
       return;
     }
-    if (file.size > 8 * 1024 * 1024) {
-      setImageError('Ảnh tối đa 8MB. Hãy chọn ảnh nhỏ hơn.');
+    const tooLarge = files.find(file => (
+      (file.type.startsWith('image/') && file.size > 8 * 1024 * 1024) ||
+      (file.type.startsWith('audio/') && file.size > 25 * 1024 * 1024) ||
+      (file.type.startsWith('video/') && file.size > 100 * 1024 * 1024)
+    ));
+    if (tooLarge) {
+      setImageError('Dung lượng tối đa: ảnh 8MB, audio 25MB, video 100MB.');
       return;
     }
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
+    const previews = files.map(file => ({
+      id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
+      file,
+      url: URL.createObjectURL(file),
+    }));
+    setImageFiles(prev => [...prev, ...files]);
+    setImagePreviews(prev => [...prev, ...previews]);
     setRemoveExistingImage(false);
+    if (imageInputRef.current) imageInputRef.current.value = '';
   };
 
-  const clearSelectedImage = () => {
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setImageFile(null);
-    setImagePreview('');
+  const removeSelectedImage = (index) => {
+    setImagePreviews(prev => {
+      const target = prev[index];
+      if (target?.url) URL.revokeObjectURL(target.url);
+      return prev.filter((_, i) => i !== index);
+    });
+    setImageFiles(prev => prev.filter((_, i) => i !== index));
     setImageError('');
     if (imageInputRef.current) imageInputRef.current.value = '';
   };
 
-  const removeImageFromLog = () => {
-    clearSelectedImage();
+  const removeExistingImageAt = (index) => {
+    setExistingImages(prev => prev.filter((_, i) => i !== index));
     setRemoveExistingImage(true);
   };
 
@@ -549,6 +635,37 @@ export default function MoodTracker() {
     }, 0);
   };
 
+  const applyNoteFormat = (tool) => {
+    const textarea = noteTextareaRef.current;
+    const currentNote = note || '';
+    const start = textarea?.selectionStart ?? currentNote.length;
+    const end = textarea?.selectionEnd ?? currentNote.length;
+    const selectedText = currentNote.slice(start, end);
+    let insertText = '';
+    let nextCursorStart = start;
+    let nextCursorEnd = start;
+
+    if (tool.linePrefix) {
+      const lineStart = currentNote.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+      const needsNewLine = lineStart !== start && currentNote.slice(lineStart, start).trim().length > 0;
+      const prefix = needsNewLine ? `\n${tool.linePrefix}` : tool.linePrefix;
+      insertText = `${prefix}${selectedText || tool.sample}`;
+      nextCursorStart = start + prefix.length;
+      nextCursorEnd = nextCursorStart + (selectedText || tool.sample).length;
+    } else {
+      insertText = `${tool.prefix}${selectedText || tool.sample}${tool.suffix}`;
+      nextCursorStart = start + tool.prefix.length;
+      nextCursorEnd = nextCursorStart + (selectedText || tool.sample).length;
+    }
+
+    const nextNote = `${currentNote.slice(0, start)}${insertText}${currentNote.slice(end)}`;
+    setNote(nextNote);
+    window.setTimeout(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(nextCursorStart, nextCursorEnd);
+    }, 0);
+  };
+
   const startEdit = (log) => {
     const causesInNote = log.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
     const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
@@ -556,10 +673,10 @@ export default function MoodTracker() {
     setNote(cleanNote);
     setCauses(causesInNote);
     setMetrics(normalizeMetrics(log.metrics));
-    setExistingImage(logImage(log));
-    setImageFile(null);
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setImagePreview('');
+    setExistingImages(logAttachments(log));
+    imagePreviews.forEach(item => URL.revokeObjectURL(item.url));
+    setImageFiles([]);
+    setImagePreviews([]);
     setRemoveExistingImage(false);
     setImageError('');
     if (imageInputRef.current) imageInputRef.current.value = '';
@@ -640,10 +757,11 @@ export default function MoodTracker() {
 
     try {
       let imagePayload;
-      if (imageFile) {
-        imagePayload = await uploadMoodImage({ file: imageFile, user });
+      if (imageFiles.length > 0) {
+        const uploadedImages = await uploadMoodFiles({ files: imageFiles, user });
+        imagePayload = editingId ? [...existingImages, ...uploadedImages] : uploadedImages;
       } else if (editingId && removeExistingImage) {
-        imagePayload = null;
+        imagePayload = existingImages.length ? existingImages : null;
       }
 
       if (editingId) {
@@ -652,7 +770,7 @@ export default function MoodTracker() {
         resetForm();
       } else {
         await addMoodLog(moodId, fullNote, currentMetrics, imagePayload || null);
-        setCheckinFeedback(imagePayload
+        setCheckinFeedback(imagePayload?.length
           ? 'Đã lưu cảm xúc cùng ảnh check-in.'
           : 'Đã lưu cảm xúc. Vườn, streak và huy hiệu của bạn đang được cập nhật.');
         resetForm();
@@ -916,17 +1034,89 @@ export default function MoodTracker() {
             {selected && (
               <>
                 <div className="mt-4">
-                  <label className="form-label">Nguyên nhân (tùy chọn)</label>
+                  <div className="cause-heading-row">
+                    <label className="form-label">Nguyên nhân (tùy chọn)</label>
+                    <button
+                      type="button"
+                      className={`cause-manage-toggle ${causeEditorOpen ? 'active' : ''}`}
+                      onClick={() => setCauseEditorOpen(open => !open)}
+                    >
+                      Tùy chỉnh
+                    </button>
+                  </div>
                   <div className="causes-grid">
-                    {CAUSES.map(c => (
-                      <button key={c}
-                        className={`cause-btn ${causes.includes(c) ? 'active' : ''}`}
-                        aria-pressed={causes.includes(c)}
-                        aria-label={`Chọn nguyên nhân ${c}`}
-                        onClick={() => toggleCause(c)}>{c}
-                      </button>
+                    {activeCauses.map(c => (
+                      <div key={c} className="cause-chip-wrap">
+                        <button
+                          type="button"
+                          className={`cause-btn ${causes.includes(c) ? 'active' : ''}`}
+                          aria-pressed={causes.includes(c)}
+                          aria-label={`Chọn nguyên nhân ${c}`}
+                          onClick={() => toggleCause(c)}
+                        >
+                          {c}
+                        </button>
+                        {causeEditorOpen && (
+                          <div className="cause-chip-actions">
+                            <button type="button" onClick={() => startEditCause(c)} aria-label={`Sửa nguyên nhân ${c}`}>✎</button>
+                            <button type="button" onClick={() => deleteCauseOption(c)} aria-label={`Xóa nguyên nhân ${c}`}>×</button>
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
+                  {causeEditorOpen && (
+                    <div className="cause-editor-panel">
+                      <div className="cause-editor-row">
+                        <input
+                          value={newCause}
+                          onChange={e => {
+                            setNewCause(e.target.value);
+                            setCauseError('');
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              addCauseOption();
+                            }
+                          }}
+                          placeholder="Thêm nguyên nhân mới..."
+                          maxLength={28}
+                        />
+                        <button type="button" className="btn btn-secondary" onClick={addCauseOption}>Thêm</button>
+                      </div>
+                      {editingCause && (
+                        <div className="cause-editor-row">
+                          <input
+                            value={editingCauseValue}
+                            onChange={e => {
+                              setEditingCauseValue(e.target.value);
+                              setCauseError('');
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                saveEditedCause();
+                              }
+                              if (e.key === 'Escape') {
+                                setEditingCause('');
+                                setEditingCauseValue('');
+                              }
+                            }}
+                            maxLength={28}
+                            aria-label={`Sửa nguyên nhân ${editingCause}`}
+                          />
+                          <button type="button" className="btn btn-primary" onClick={saveEditedCause}>Lưu</button>
+                          <button type="button" className="btn btn-secondary" onClick={() => { setEditingCause(''); setEditingCauseValue(''); }}>Hủy</button>
+                        </div>
+                      )}
+                      <div className="cause-editor-footer">
+                        <span>{activeCauses.length} nguyên nhân</span>
+                        <button type="button" onClick={resetCauseOptions}>Đặt lại mặc định</button>
+                      </div>
+                      {causeError && <p className="cause-error" role="alert">{causeError}</p>}
+                    </div>
+                  )}
                 </div>
                 <div className="mt-4">
                   <div className="metrics-heading">
@@ -992,6 +1182,20 @@ export default function MoodTracker() {
                       ))}
                     </div>
                   )}
+                  <div className="note-format-toolbar" aria-label="Định dạng ghi chú">
+                    {FORMAT_TOOLS.map(tool => (
+                      <button
+                        key={tool.id}
+                        type="button"
+                        className={`format-tool-btn ${tool.id}`}
+                        onClick={() => applyNoteFormat(tool)}
+                        title={tool.title}
+                        aria-label={tool.title}
+                      >
+                        {tool.label}
+                      </button>
+                    ))}
+                  </div>
                   <textarea
                     id="mood-note-input"
                     ref={noteTextareaRef}
@@ -1003,29 +1207,50 @@ export default function MoodTracker() {
                     placeholder="Hôm nay có chuyện gì xảy ra..."
                     rows={4}
                   />
+                  {note.trim() && (
+                    <div className="note-preview-box">
+                      <span>Xem trước ghi chú</span>
+                      <RichText text={note} className="note-preview-content" />
+                    </div>
+                  )}
                   <div className="checkin-photo-field">
                     <div className="photo-field-head">
                       <div>
-                        <strong>Ảnh check-in</strong>
-                        <span>Thêm một ảnh nhỏ để sau này nhớ ngữ cảnh hơn.</span>
+                        <strong>Tệp check-in</strong>
+                        <span>Thêm ảnh, video hoặc âm thanh để sau này nhớ ngữ cảnh hơn.</span>
                       </div>
                       <button type="button" className="btn-photo-select" onClick={() => imageInputRef.current?.click()}>
-                        📷 Chọn ảnh
+                        📎 Chọn tệp
                       </button>
                     </div>
                     <input
                       ref={imageInputRef}
                       type="file"
-                      accept="image/*"
+                      accept="image/*,video/*,audio/*"
+                      multiple
                       onChange={handleImageSelect}
                       hidden
                     />
-                    {(imagePreview || (!removeExistingImage && existingImage?.url)) && (
-                      <div className="checkin-photo-preview">
-                        <img src={imagePreview || existingImage.url} alt="Ảnh check-in xem trước" />
-                        <button type="button" onClick={imagePreview ? clearSelectedImage : removeImageFromLog}>
-                          Bỏ ảnh
-                        </button>
+                    {(existingImages.length > 0 || imagePreviews.length > 0) && (
+                      <div className="checkin-photo-grid">
+                        {existingImages.map((image, index) => (
+                          <div key={`${image.url}-${index}`} className="checkin-photo-preview">
+                            {image.kind === 'image' && <img src={image.url} alt={`Ảnh check-in đã lưu ${index + 1}`} />}
+                            {image.kind === 'video' && <video src={image.url} muted preload="metadata" />}
+                            {image.kind === 'audio' && <div className="media-file-preview">🎧<span>{image.name}</span></div>}
+                            <button type="button" onClick={() => removeExistingImageAt(index)}>Bỏ tệp</button>
+                          </div>
+                        ))}
+                        {imagePreviews.map((preview, index) => (
+                          <div key={preview.id} className="checkin-photo-preview">
+                            {preview.file.type.startsWith('image/') && <img src={preview.url} alt={`Ảnh check-in xem trước ${index + 1}`} />}
+                            {preview.file.type.startsWith('video/') && <video src={preview.url} muted preload="metadata" />}
+                            {preview.file.type.startsWith('audio/') && <div className="media-file-preview">🎧<span>{preview.file.name}</span></div>}
+                            <button type="button" onClick={() => removeSelectedImage(index)}>
+                              Bỏ tệp
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     )}
                     {imageError && <p className="photo-error" role="alert">{imageError}</p>}
@@ -1356,7 +1581,7 @@ export default function MoodTracker() {
                           const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
                           const causeTags = log.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
                           const logMetrics = log.metrics ? normalizeMetrics(log.metrics) : null;
-                          const image = logImage(log);
+                          const attachments = logAttachments(log);
                           return (
                             <div key={log.id}
                               className={`timeline-entry ${editingId === log.id ? 'editing' : ''}`}
@@ -1399,17 +1624,12 @@ export default function MoodTracker() {
                                     ))}
                                   </div>
                                 )}
-                                {image?.url && (
-                                  <button
-                                    type="button"
-                                    className="entry-photo-button"
-                                    onClick={() => openPhotoLightbox(image, `Ảnh check-in lúc ${format(new Date(log.date), 'HH:mm')}`)}
-                                    aria-label={`Xem ảnh check-in lúc ${format(new Date(log.date), 'HH:mm')} ở dạng lớn`}
-                                  >
-                                    <img className="entry-photo" src={image.url} alt={`Ảnh check-in lúc ${format(new Date(log.date), 'HH:mm')}`} />
-                                  </button>
-                                )}
-                                {cleanNote && <p className="entry-note">{cleanNote}</p>}
+                                <MediaAttachments
+                                  attachments={attachments}
+                                  label={`Tệp check-in lúc ${format(new Date(log.date), 'HH:mm')}`}
+                                  onOpenImage={openPhotoLightbox}
+                                />
+                                {cleanNote && <RichText text={cleanNote} className="entry-note" />}
                               </div>
                             </div>
                           );
@@ -1493,7 +1713,7 @@ export default function MoodTracker() {
                 const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
                 const causeTags = log.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
                 const logMetrics = log.metrics ? normalizeMetrics(log.metrics) : null;
-                const image = logImage(log);
+                const attachments = logAttachments(log);
                 return (
                   <div key={log.id} className="day-detail-entry" style={{ '--entry-color': mood?.color || '#ccc' }}>
                     <div className="day-detail-entry-head">
@@ -1514,17 +1734,12 @@ export default function MoodTracker() {
                         ))}
                       </div>
                     )}
-                    {image?.url && (
-                      <button
-                        type="button"
-                        className="entry-photo-button"
-                        onClick={() => openPhotoLightbox(image, `Ảnh check-in lúc ${format(new Date(log.date), 'HH:mm')}`)}
-                        aria-label={`Xem ảnh check-in lúc ${format(new Date(log.date), 'HH:mm')} ở dạng lớn`}
-                      >
-                        <img className="day-detail-photo" src={image.url} alt={`Ảnh check-in lúc ${format(new Date(log.date), 'HH:mm')}`} />
-                      </button>
-                    )}
-                    {cleanNote ? <p className="entry-note">{cleanNote}</p> : <p className="entry-note">Không có ghi chú thêm.</p>}
+                    <MediaAttachments
+                      attachments={attachments}
+                      label={`Tệp check-in lúc ${format(new Date(log.date), 'HH:mm')}`}
+                      onOpenImage={openPhotoLightbox}
+                    />
+                    <RichText text={cleanNote} fallback="Không có ghi chú thêm." className="entry-note" />
                   </div>
                 );
               })}

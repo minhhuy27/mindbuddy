@@ -2,9 +2,11 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { storage } from '../firebase';
 
 const MAX_IMAGE_SIZE = 8 * 1024 * 1024;
+const MAX_AUDIO_SIZE = 25 * 1024 * 1024;
+const MAX_VIDEO_SIZE = 100 * 1024 * 1024;
 const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.82;
-const UPLOAD_TIMEOUT_MS = 30000;
+const UPLOAD_TIMEOUT_MS = 120000;
 
 function withTimeout(promise, message) {
   let timeoutId;
@@ -55,7 +57,38 @@ function userStorageKey(user) {
 function extensionFor(file) {
   if (file.type === 'image/png') return 'png';
   if (file.type === 'image/webp') return 'webp';
+  if (file.type === 'video/mp4') return 'mp4';
+  if (file.type === 'video/webm') return 'webm';
+  if (file.type === 'audio/mpeg') return 'mp3';
+  if (file.type === 'audio/mp4') return 'm4a';
+  if (file.type === 'audio/webm') return 'webm';
+  if (file.type === 'audio/wav') return 'wav';
+  const ext = file.name?.split('.').pop()?.toLowerCase();
+  if (ext && /^[a-z0-9]{2,5}$/.test(ext)) return ext;
   return 'jpg';
+}
+
+function kindFor(file) {
+  if (file.type.startsWith('image/')) return 'image';
+  if (file.type.startsWith('video/')) return 'video';
+  if (file.type.startsWith('audio/')) return 'audio';
+  return 'file';
+}
+
+function validateMediaFile(file) {
+  if (file.type.startsWith('image/')) {
+    if (file.size > MAX_IMAGE_SIZE) throw new Error('Mỗi ảnh tối đa 8MB. Hãy chọn ảnh nhỏ hơn.');
+    return;
+  }
+  if (file.type.startsWith('audio/')) {
+    if (file.size > MAX_AUDIO_SIZE) throw new Error('Mỗi tệp âm thanh tối đa 25MB.');
+    return;
+  }
+  if (file.type.startsWith('video/')) {
+    if (file.size > MAX_VIDEO_SIZE) throw new Error('Mỗi video tối đa 100MB.');
+    return;
+  }
+  throw new Error('Chỉ hỗ trợ ảnh, video hoặc tệp âm thanh.');
 }
 
 function loadImage(file) {
@@ -101,8 +134,10 @@ async function compressImage(file) {
   return blob;
 }
 
-export async function uploadMoodImage({ file, user, namespace = 'mood-checkins' }) {
-  const blob = await compressImage(file);
+export async function uploadMoodFile({ file, user, namespace = 'mood-checkins' }) {
+  validateMediaFile(file);
+  const isImage = file.type.startsWith('image/');
+  const blob = isImage ? await compressImage(file) : file;
   const ext = extensionFor(file);
   const safeUser = userStorageKey(user);
   const path = `${namespace}/${safeUser}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
@@ -121,9 +156,10 @@ export async function uploadMoodImage({ file, user, namespace = 'mood-checkins' 
     return {
       url,
       path,
-      name: file.name || 'Ảnh check-in',
+      name: file.name || 'Tệp check-in',
       size: blob.size,
-      type: blob.type || file.type || 'image/jpeg',
+      type: blob.type || file.type || 'application/octet-stream',
+      kind: kindFor(file),
     };
   } catch (error) {
     console.error('Firebase Storage upload failed:', {
@@ -135,4 +171,18 @@ export async function uploadMoodImage({ file, user, namespace = 'mood-checkins' 
     });
     throw new Error(storageErrorMessage(error));
   }
+}
+
+export async function uploadMoodImage({ file, user, namespace = 'mood-checkins' }) {
+  return uploadMoodFile({ file, user, namespace });
+}
+
+export async function uploadMoodImages({ files, user, namespace = 'mood-checkins' }) {
+  const list = Array.from(files || []);
+  if (!list.length) return [];
+  return Promise.all(list.map(file => uploadMoodFile({ file, user, namespace })));
+}
+
+export async function uploadMoodFiles({ files, user, namespace = 'mood-checkins' }) {
+  return uploadMoodImages({ files, user, namespace });
 }

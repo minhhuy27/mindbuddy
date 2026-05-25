@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useApp } from '../context/AppContext';
+import { normalizeMoodAttachments } from '../utils/moodImages';
+import RichText from '../components/RichText';
+import MediaAttachments from '../components/MediaAttachments';
 import './GoodMoments.css';
 
 const POSITIVE_WORDS = [
@@ -14,7 +17,6 @@ const POSITIVE_WORDS = [
 function cleanNote(note = '') {
   return note.replace(/\s*\[.+\]$/, '').trim();
 }
-
 function extractCauses(note = '') {
   return note.match(/\[(.+)\]$/)?.[1]?.split(', ').filter(Boolean) || [];
 }
@@ -32,12 +34,12 @@ function getMomentSignals(log, mood) {
   const energy = normalizeMetric(metrics.energy);
   const focus = normalizeMetric(metrics.focus);
   const sleep = normalizeMetric(metrics.sleep);
-  const hasPhoto = Boolean(log.image?.url || log.imageUrl);
+  const hasPhoto = normalizeMoodAttachments(log).length > 0;
   const signals = [];
 
   if ((mood?.score || 0) >= 4) signals.push('Mood cao');
   if (POSITIVE_WORDS.some(word => lowerNote.includes(word))) signals.push('Note tích cực');
-  if (hasPhoto && (mood?.score || 0) >= 3) signals.push('Có ảnh đáng nhớ');
+  if (hasPhoto && (mood?.score || 0) >= 3) signals.push('Có tệp đáng nhớ');
   if (stress !== null && stress <= 2) signals.push('Stress thấp');
   if (energy !== null && energy >= 4) signals.push('Năng lượng tốt');
   if (focus !== null && focus >= 4) signals.push('Tập trung rõ');
@@ -52,7 +54,7 @@ function getMomentScore(log, mood, signals) {
   const energy = normalizeMetric(metrics.energy);
   const focus = normalizeMetric(metrics.focus);
   const sleep = normalizeMetric(metrics.sleep);
-  const hasPhoto = Boolean(log.image?.url || log.imageUrl);
+  const hasPhoto = normalizeMoodAttachments(log).length > 0;
   return (
     (mood?.score || 3) * 1.2 +
     signals.length * 0.7 +
@@ -63,7 +65,6 @@ function getMomentScore(log, mood, signals) {
     (sleep || 0) * 0.1
   );
 }
-
 export default function GoodMoments() {
   const { moodLogs, MOODS, customMoods } = useApp();
   const [filter, setFilter] = React.useState('all');
@@ -80,7 +81,9 @@ export default function GoodMoments() {
         const mood = allMoods.find(item => item.id === log.mood);
         const note = cleanNote(log.note || '');
         const signals = getMomentSignals(log, mood);
-        const imageUrl = log.image?.url || log.imageUrl || '';
+        const attachments = normalizeMoodAttachments(log);
+        const coverAttachment = attachments.find(item => item.kind === 'image') || attachments[0] || null;
+        const imageUrl = coverAttachment?.url || '';
         return {
           id: log.id,
           date: log.date,
@@ -88,6 +91,8 @@ export default function GoodMoments() {
           note,
           causes: extractCauses(log.note || ''),
           imageUrl,
+          attachments,
+          coverAttachment,
           signals,
           score: getMomentScore(log, mood, signals),
           metrics: log.metrics || null,
@@ -118,7 +123,7 @@ export default function GoodMoments() {
       }
       acc[key].count += 1;
       acc[key].totalScore += moment.mood?.score || 3;
-      if (moment.imageUrl) acc[key].photos += 1;
+      acc[key].photos += moment.attachments.length;
       return acc;
     }, {});
 
@@ -150,11 +155,11 @@ export default function GoodMoments() {
         <div>
           <span className="good-moments-kicker">Khoảnh khắc tốt</span>
           <h1>Nơi cất lại những ngày mình đã ổn</h1>
-          <p>MindBuddy gom note tích cực, ảnh check-in và những ngày mood cao để bạn có thể mở lại khi cần một điểm tựa nhẹ.</p>
+          <p>MindBuddy gom note tích cực, tệp check-in và những ngày mood cao để bạn có thể mở lại khi cần một điểm tựa nhẹ.</p>
         </div>
         <div className="good-moments-stats" aria-label="Tổng quan khoảnh khắc tốt">
           <div><strong>{moments.length}</strong><span>Khoảnh khắc</span></div>
-          <div><strong>{moments.filter(moment => moment.imageUrl).length}</strong><span>Có ảnh</span></div>
+          <div><strong>{moments.reduce((sum, moment) => sum + moment.attachments.length, 0)}</strong><span>Tệp</span></div>
           <div><strong>{bestDays.length}</strong><span>Ngày ổn</span></div>
         </div>
       </section>
@@ -163,7 +168,7 @@ export default function GoodMoments() {
         <section className="card good-moments-empty">
           <div className="empty-icon" aria-hidden="true">✨</div>
           <h3>Chưa có khoảnh khắc nào được gom lại</h3>
-          <p>Ghi một check-in khi thấy ổn hơn, thêm ảnh hoặc vài dòng tích cực. MindBuddy sẽ tự lưu vào mục này.</p>
+          <p>Ghi một check-in khi thấy ổn hơn, thêm tệp hoặc vài dòng tích cực. MindBuddy sẽ tự lưu vào mục này.</p>
           <Link to="/mood" className="btn btn-primary">Ghi cảm xúc</Link>
         </section>
       ) : (
@@ -174,13 +179,17 @@ export default function GoodMoments() {
                 <div>
                   <span>Gợi ý mở lại hôm nay</span>
                   <h3>{topMoment.mood?.emoji} {topMoment.mood?.label || 'Không rõ'}</h3>
-                  <p>{topMoment.note || 'Một khoảnh khắc ổn đã được ghi lại.'}</p>
+                  <RichText text={topMoment.note} fallback="Một khoảnh khắc ổn đã được ghi lại." className="good-note-text" />
                   <button type="button" className="btn btn-primary" onClick={() => setSelectedMoment(topMoment)}>
                     Mở khoảnh khắc
                   </button>
                 </div>
-                {topMoment.imageUrl ? (
-                  <img src={topMoment.imageUrl} alt={`Ảnh khoảnh khắc ${topMoment.mood?.label || 'không rõ'}`} />
+                {topMoment.coverAttachment?.kind === 'image' ? (
+                  <img src={topMoment.imageUrl} alt={`Tệp khoảnh khắc ${topMoment.mood?.label || 'không rõ'}`} />
+                ) : topMoment.coverAttachment?.kind === 'video' ? (
+                  <video src={topMoment.imageUrl} muted preload="metadata" />
+                ) : topMoment.coverAttachment?.kind === 'audio' ? (
+                  <div className="featured-placeholder" aria-hidden="true">Audio</div>
                 ) : (
                   <div className="featured-placeholder" aria-hidden="true">✨</div>
                 )}
@@ -194,7 +203,7 @@ export default function GoodMoments() {
                   <div key={day.key} className="good-day-row">
                     <div>
                       <strong>{format(new Date(day.date), 'EEEE, dd/MM', { locale: vi })}</strong>
-                      <span>{day.count} khoảnh khắc{day.photos ? `, ${day.photos} ảnh` : ''}</span>
+                      <span>{day.count} khoảnh khắc{day.photos ? `, ${day.photos} tệp` : ''}</span>
                     </div>
                     <b>{day.average.toFixed(1)}/5</b>
                   </div>
@@ -207,12 +216,12 @@ export default function GoodMoments() {
             <div className="section-heading-row">
               <div>
                 <h3>Bộ sưu tập khoảnh khắc</h3>
-                <p className="text-muted">Bấm vào một mục để xem lại ghi chú, ảnh và tín hiệu tích cực.</p>
+                <p className="text-muted">Bấm vào một mục để xem lại ghi chú, tệp và tín hiệu tích cực.</p>
               </div>
               <div className="good-filter-tabs" aria-label="Lọc khoảnh khắc tốt">
                 {[
                   { id: 'all', label: 'Tất cả' },
-                  { id: 'photo', label: 'Có ảnh' },
+                  { id: 'photo', label: 'Có tệp' },
                   { id: 'mood', label: 'Mood cao' },
                   { id: 'note', label: 'Note tốt' },
                 ].map(item => (
@@ -238,11 +247,22 @@ export default function GoodMoments() {
                     style={{ '--moment-color': moment.mood?.color || '#a29bfe' }}
                     onClick={() => setSelectedMoment(moment)}
                   >
-                    {moment.imageUrl && <img src={moment.imageUrl} alt={`Ảnh khoảnh khắc lúc ${format(new Date(moment.date), 'HH:mm')}`} />}
+                    {moment.imageUrl && (
+                      <div className="good-moment-thumb-wrap">
+                        {moment.coverAttachment?.kind === 'video' ? (
+                          <video src={moment.imageUrl} muted preload="metadata" />
+                        ) : moment.coverAttachment?.kind === 'audio' ? (
+                          <div className="good-thumb-placeholder">Audio</div>
+                        ) : (
+                          <img src={moment.imageUrl} alt={`Tệp khoảnh khắc lúc ${format(new Date(moment.date), 'HH:mm')}`} />
+                        )}
+                        {moment.attachments.length > 1 && <span>{moment.attachments.length} tệp</span>}
+                      </div>
+                    )}
                     <div className="good-moment-body">
                       <span>{format(new Date(moment.date), 'dd/MM/yyyy, HH:mm')}</span>
                       <strong>{moment.mood?.emoji} {moment.mood?.label || 'Không rõ'}</strong>
-                      <p>{moment.note || 'Một khoảnh khắc ổn đã được ghi lại.'}</p>
+                      <RichText text={moment.note} fallback="Một khoảnh khắc ổn đã được ghi lại." className="good-note-text" />
                       <div className="good-signal-row">
                         {moment.signals.slice(0, 3).map(signal => <i key={signal}>{signal}</i>)}
                       </div>
@@ -253,7 +273,7 @@ export default function GoodMoments() {
             ) : (
               <div className="good-filter-empty">
                 <strong>Không có mục nào trong bộ lọc này.</strong>
-                <p>Thử đổi bộ lọc hoặc ghi thêm check-in có ảnh/note tích cực.</p>
+                <p>Thử đổi bộ lọc hoặc ghi thêm check-in có tệp/note tích cực.</p>
               </div>
             )}
           </section>
@@ -271,9 +291,9 @@ export default function GoodMoments() {
               <button type="button" onClick={() => setSelectedMoment(null)} aria-label="Đóng khoảnh khắc">×</button>
             </div>
             <div className="good-modal-body">
-              {selectedMoment.imageUrl && <img src={selectedMoment.imageUrl} alt="Ảnh khoảnh khắc tốt" />}
+              <MediaAttachments attachments={selectedMoment.attachments} label="Tệp khoảnh khắc" />
               <div className="good-modal-note" style={{ '--moment-color': selectedMoment.mood?.color || '#a29bfe' }}>
-                <p>{selectedMoment.note || 'Một khoảnh khắc ổn đã được ghi lại.'}</p>
+                <RichText text={selectedMoment.note} fallback="Một khoảnh khắc ổn đã được ghi lại." className="good-note-text" />
                 {selectedMoment.causes.length > 0 && (
                   <div className="good-cause-tags">
                     {selectedMoment.causes.map(cause => <span key={cause}>{cause}</span>)}

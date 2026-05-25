@@ -128,6 +128,7 @@
 }
 
 .good-featured-moment img,
+.good-featured-moment video,
 .featured-placeholder {
   width: 100%;
   min-height: 220px;
@@ -247,11 +248,37 @@
   outline: none;
 }
 
-.good-moment-card > img {
+.good-moment-thumb-wrap {
+  position: relative;
+}
+
+.good-moment-thumb-wrap img,
+.good-moment-thumb-wrap video,
+.good-thumb-placeholder {
   width: 100%;
   aspect-ratio: 16 / 10;
   object-fit: cover;
   display: block;
+}
+
+.good-thumb-placeholder {
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--primary);
+  font-weight: 900;
+}
+
+.good-moment-thumb-wrap span {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.62);
+  color: white;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 8px;
 }
 
 .good-moment-body {
@@ -384,7 +411,12 @@
   padding: 0 24px 24px;
 }
 
-.good-modal-body > img {
+.good-modal-gallery {
+  display: grid;
+  gap: 10px;
+}
+
+.good-modal-gallery img {
   width: 100%;
   max-height: 62vh;
   object-fit: contain;

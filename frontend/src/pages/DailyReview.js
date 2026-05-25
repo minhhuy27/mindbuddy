@@ -4,6 +4,9 @@ import { format, subDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useApp } from '../context/AppContext';
 import { reviewDay } from '../utils/aiService';
+import { normalizeMoodAttachments } from '../utils/moodImages';
+import RichText from '../components/RichText';
+import MediaAttachments from '../components/MediaAttachments';
 import './DailyReview.css';
 
 const METRIC_FIELDS = [
@@ -79,6 +82,7 @@ function buildSignature(entries, pomodoros) {
       note: e.note,
       causes: e.causes,
       metrics: e.metrics,
+      attachments: e.attachments?.map(item => ({ url: item.url, kind: item.kind, name: item.name })) || [],
     })),
     pomodoros: pomodoros.map(p => ({
       time: p.time,
@@ -325,7 +329,7 @@ export default function DailyReview() {
         note: cleanNote(log.note || ''),
         causes: extractCauses(log.note || ''),
         metrics: normalizeMetrics(log.metrics),
-        imageUrl: log.image?.url || log.imageUrl || '',
+        attachments: normalizeMoodAttachments(log),
       };
     })
   ), [dayLogs, allMoods]);
@@ -355,7 +359,7 @@ export default function DailyReview() {
       title: `${entry.moodEmoji} ${entry.moodLabel}`,
       detail: entry.note || 'Không có ghi chú thêm.',
       color: entry.moodColor,
-      imageUrl: entry.imageUrl,
+      attachments: entry.attachments,
     }));
     const pomodoroEvents = dayPomodoros.map(session => ({
       type: 'pomodoro',
@@ -375,7 +379,7 @@ export default function DailyReview() {
       return {
         topMood: 'Chưa có check-in cảm xúc.',
         topCause: 'Chưa có nhãn nguyên nhân.',
-        photoSummary: 'Chưa lưu ảnh check-in.',
+        photoSummary: 'Chưa lưu tệp check-in.',
         metricSignal: 'Chưa đủ chỉ số phụ.',
         quote: '',
       };
@@ -396,7 +400,7 @@ export default function DailyReview() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3);
 
-    const photos = entries.filter(entry => entry.imageUrl).length;
+    const photos = entries.reduce((sum, entry) => sum + entry.attachments.length, 0);
     const metricEntries = entries.flatMap(entry => (
       Object.entries(entry.metrics || {})
         .filter(([, value]) => Number.isFinite(Number(value)))
@@ -420,7 +424,7 @@ export default function DailyReview() {
       topCause: topCauses.length
         ? topCauses.map(([cause, count]) => `${cause}${count > 1 ? ` (${count})` : ''}`).join(', ')
         : 'Chưa gắn nhãn nguyên nhân nào.',
-      photoSummary: photos ? `${photos} ảnh check-in đã lưu để nhớ ngữ cảnh.` : 'Chưa lưu ảnh check-in.',
+      photoSummary: photos ? `${photos} tệp check-in đã lưu để nhớ ngữ cảnh.` : 'Chưa lưu tệp check-in.',
       metricSignal: strongestMetric
         ? `${fieldLabels[strongestMetric.id] || strongestMetric.id} cao nhất lúc ${strongestMetric.time}: ${strongestMetric.value}/5.`
         : 'Chưa đủ chỉ số phụ.',
@@ -555,8 +559,8 @@ export default function DailyReview() {
                     <time>{event.time}</time>
                     <div>
                       <strong>{event.title}</strong>
-                      <p>{event.detail}</p>
-                      {event.imageUrl && <img className="daily-timeline-photo" src={event.imageUrl} alt={`Ảnh check-in lúc ${event.time}`} />}
+                      <RichText text={event.detail} className="daily-event-note" />
+                      <MediaAttachments attachments={event.attachments} label={`Tệp check-in lúc ${event.time}`} compact />
                     </div>
                   </div>
                 ))}
