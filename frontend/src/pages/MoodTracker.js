@@ -274,6 +274,7 @@ export default function MoodTracker() {
   const [causes, setCauses] = useState([]);
   const [metrics, setMetrics] = useState(DEFAULT_METRICS);
   const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [checkinFeedback, setCheckinFeedback] = useState('');
   const [draftStatus, setDraftStatus] = useState('');
@@ -746,6 +747,7 @@ export default function MoodTracker() {
   const handleSave = async () => {
     if (!selected || saving) return;
     setSaving(true);
+    setSaveStatus('');
     setImageError('');
     const moodId = selected;
     const rawNote = note;
@@ -758,11 +760,17 @@ export default function MoodTracker() {
     try {
       let imagePayload;
       if (imageFiles.length > 0) {
-        const uploadedImages = await uploadMoodFiles({ files: imageFiles, user });
+        const uploadedImages = await uploadMoodFiles({
+          files: imageFiles,
+          user,
+          onStatus: setSaveStatus,
+        });
         imagePayload = editingId ? [...existingImages, ...uploadedImages] : uploadedImages;
       } else if (editingId && removeExistingImage) {
         imagePayload = existingImages.length ? existingImages : null;
       }
+
+      setSaveStatus('Đang lưu check-in...');
 
       if (editingId) {
         await updateMoodLog(editingId, moodId, fullNote, currentMetrics, imagePayload);
@@ -777,6 +785,7 @@ export default function MoodTracker() {
       }
       window.setTimeout(() => setCheckinFeedback(''), 3200);
       setSaving(false);
+      setSaveStatus('');
       selectTab('insight');
 
       const recentMoods = moodLogs.slice(0, 7)
@@ -797,6 +806,7 @@ export default function MoodTracker() {
       console.error('Save mood image/check-in error:', err);
       setImageError(err.message || 'Không thể lưu ảnh check-in. Vui lòng thử lại.');
       setSaving(false);
+      setSaveStatus('');
     }
   };
 
@@ -1272,7 +1282,7 @@ export default function MoodTracker() {
                   disabled={saving}
                 >
                   {saving
-                    ? <span className="btn-loading">⏳ Đang lưu...</span>
+                    ? <span className="btn-loading">⏳ {saveStatus || 'Đang lưu...'}</span>
                     : editingId ? '💾 Cập nhật ghi chú' : '✨ Lưu cảm xúc'
                   }
                 </button>

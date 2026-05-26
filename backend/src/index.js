@@ -21,6 +21,12 @@ app.use(cors({
     }
   },
   credentials: true,
+  exposedHeaders: [
+    'X-MindBuddy-Compressed',
+    'X-MindBuddy-Original-Size',
+    'X-MindBuddy-Compressed-Size',
+    'X-MindBuddy-File-Name',
+  ],
 }));
 app.use(express.json());
 
