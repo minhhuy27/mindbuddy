@@ -6,12 +6,14 @@ const MAX_AUDIO_SIZE = 25 * 1024 * 1024;
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024;
 const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.82;
-const UPLOAD_TIMEOUT_MS = 120000;
+const UPLOAD_TIMEOUT_MS = 180000;
+const VIDEO_PROCESS_TIMEOUT_MS = 240000;
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-function withTimeout(promise, message) {
+function withTimeout(promise, message, timeoutMs = UPLOAD_TIMEOUT_MS) {
   let timeoutId;
   const timeout = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(message)), UPLOAD_TIMEOUT_MS);
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
 }
@@ -134,11 +136,64 @@ async function compressImage(file) {
   return blob;
 }
 
-export async function uploadMoodFile({ file, user, namespace = 'mood-checkins' }) {
+function responseFileName(response, fallbackName) {
+  const encoded = response.headers.get('X-MindBuddy-File-Name');
+  if (!encoded) return fallbackName;
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return encoded;
+  }
+}
+
+async function compressVideoOnBackend(file) {
+  if (!file.type.startsWith('video/')) return file;
+
+  const formData = new FormData();
+  formData.append('video', file);
+
+  const response = await withTimeout(
+    fetch(`${API_BASE}/media/compress-video`, {
+      method: 'POST',
+      body: formData,
+    }),
+    'Nén video quá lâu. Hãy thử video ngắn hơn hoặc nhỏ hơn.',
+    VIDEO_PROCESS_TIMEOUT_MS
+  );
+
+  if (!response.ok) {
+    let message = 'Không thể nén video trên backend.';
+    try {
+      const payload = await response.json();
+      if (payload?.error) message = payload.error;
+    } catch {
+      // Keep default message when response is not JSON.
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const compressed = response.headers.get('X-MindBuddy-Compressed') === 'true';
+  return new File(
+    [blob],
+    responseFileName(response, compressed ? `${file.name.replace(/\.[^.]+$/, '')}-compressed.mp4` : file.name),
+    {
+      type: blob.type || (compressed ? 'video/mp4' : file.type),
+      lastModified: Date.now(),
+    }
+  );
+}
+
+export async function uploadMoodFile({ file, user, namespace = 'mood-checkins', onStatus }) {
   validateMediaFile(file);
   const isImage = file.type.startsWith('image/');
-  const blob = isImage ? await compressImage(file) : file;
-  const ext = extensionFor(file);
+  const isVideo = file.type.startsWith('video/');
+  if (isVideo) onStatus?.('Đang nén video trên backend...');
+  const optimizedFile = isVideo ? await compressVideoOnBackend(file) : file;
+  if (isImage) onStatus?.('Đang nén ảnh trước khi lưu...');
+  const blob = isImage ? await compressImage(file) : optimizedFile;
+  onStatus?.('Đang tải tệp lên Firebase...');
+  const ext = extensionFor(blob);
   const safeUser = userStorageKey(user);
   const path = `${namespace}/${safeUser}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
   const imageRef = ref(storage, path);
@@ -153,12 +208,15 @@ export async function uploadMoodFile({ file, user, namespace = 'mood-checkins' }
       getDownloadURL(imageRef),
       'Không lấy được đường dẫn ảnh từ Firebase Storage.'
     );
+    const wasCompressed = isVideo && blob.name !== file.name && blob.size < file.size;
     return {
       url,
       path,
-      name: file.name || 'Tệp check-in',
+      name: blob.name || file.name || 'Tệp check-in',
       size: blob.size,
       type: blob.type || file.type || 'application/octet-stream',
+      originalSize: wasCompressed ? file.size : undefined,
+      compressed: wasCompressed || undefined,
       kind: kindFor(file),
     };
   } catch (error) {
@@ -177,12 +235,22 @@ export async function uploadMoodImage({ file, user, namespace = 'mood-checkins' 
   return uploadMoodFile({ file, user, namespace });
 }
 
-export async function uploadMoodImages({ files, user, namespace = 'mood-checkins' }) {
+export async function uploadMoodImages({ files, user, namespace = 'mood-checkins', onStatus }) {
   const list = Array.from(files || []);
   if (!list.length) return [];
-  return Promise.all(list.map(file => uploadMoodFile({ file, user, namespace })));
+  const uploaded = [];
+  for (let index = 0; index < list.length; index += 1) {
+    const result = await uploadMoodFile({
+      file: list[index],
+      user,
+      namespace,
+      onStatus: message => onStatus?.(`${message} (${index + 1}/${list.length})`),
+    });
+    uploaded.push(result);
+  }
+  return uploaded;
 }
 
-export async function uploadMoodFiles({ files, user, namespace = 'mood-checkins' }) {
-  return uploadMoodImages({ files, user, namespace });
+export async function uploadMoodFiles({ files, user, namespace = 'mood-checkins', onStatus }) {
+  return uploadMoodImages({ files, user, namespace, onStatus });
 }

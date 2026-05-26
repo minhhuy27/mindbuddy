@@ -72,6 +72,7 @@ export default function Dashboard() {
   const [quickNote, setQuickNote] = React.useState('');
   const [quickFeedback, setQuickFeedback] = React.useState('');
   const [quickAnalyzing, setQuickAnalyzing] = React.useState(false);
+  const [quickSaveStatus, setQuickSaveStatus] = React.useState('');
   const [showCrisis, setShowCrisis] = React.useState(false);
   const [selectedDayDetail, setSelectedDayDetail] = React.useState(null);
   const [selectedMemory, setSelectedMemory] = React.useState(null);
@@ -371,16 +372,23 @@ export default function Dashboard() {
       .filter(Boolean);
 
     setQuickAnalyzing(true);
+    setQuickSaveStatus('');
     setQuickImageError('');
     let imagePayload = null;
     try {
       if (quickImageFiles.length > 0) {
-        imagePayload = await uploadMoodFiles({ files: quickImageFiles, user, namespace: 'quick-checkins' });
+        imagePayload = await uploadMoodFiles({
+          files: quickImageFiles,
+          user,
+          namespace: 'quick-checkins',
+          onStatus: setQuickSaveStatus,
+        });
       }
     } catch (err) {
       console.error('Quick media upload error:', err);
       setQuickImageError(err.message || 'Không thể lưu tệp check-in.');
       setQuickAnalyzing(false);
+      setQuickSaveStatus('');
       return;
     }
     await addMoodLog(quickMood, note, null, imagePayload);
@@ -388,6 +396,7 @@ export default function Dashboard() {
     setQuickNote('');
     clearQuickImages();
     setQuickFeedback('Đã ghi lại hôm nay. MindBuddy đang phân tích nhanh cho bạn...');
+    setQuickSaveStatus('');
 
     try {
       const advice = await analyzeMood({
@@ -556,7 +565,7 @@ export default function Dashboard() {
             {quickImageError && <p className="quick-photo-error" role="alert">{quickImageError}</p>}
           </div>
           <button className="btn btn-primary w-full" onClick={handleQuickCheckin} disabled={!quickMood || quickAnalyzing}>
-            {quickAnalyzing ? 'Đang phân tích...' : 'Lưu check-in hôm nay'}
+            {quickAnalyzing ? (quickSaveStatus || 'Đang phân tích...') : 'Lưu check-in hôm nay'}
           </button>
           {quickFeedback && <p className="quick-feedback" role="status">{quickFeedback}</p>}
         </div>
