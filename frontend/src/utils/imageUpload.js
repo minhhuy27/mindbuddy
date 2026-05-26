@@ -7,7 +7,7 @@ const MAX_VIDEO_SIZE = 100 * 1024 * 1024;
 const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.82;
 const UPLOAD_TIMEOUT_MS = 180000;
-const VIDEO_PROCESS_TIMEOUT_MS = 240000;
+const VIDEO_PROCESS_TIMEOUT_MS = 420000;
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 function withTimeout(promise, message, timeoutMs = UPLOAD_TIMEOUT_MS) {
@@ -157,7 +157,7 @@ async function compressVideoOnBackend(file) {
       method: 'POST',
       body: formData,
     }),
-    'Nén video quá lâu. Hãy thử video ngắn hơn hoặc nhỏ hơn.',
+    'Backend nén video phản hồi quá lâu. MindBuddy sẽ lưu bản gốc thay thế.',
     VIDEO_PROCESS_TIMEOUT_MS
   );
 
@@ -188,8 +188,21 @@ export async function uploadMoodFile({ file, user, namespace = 'mood-checkins', 
   validateMediaFile(file);
   const isImage = file.type.startsWith('image/');
   const isVideo = file.type.startsWith('video/');
-  if (isVideo) onStatus?.('Đang nén video trên backend...');
-  const optimizedFile = isVideo ? await compressVideoOnBackend(file) : file;
+  let optimizedFile = file;
+  let videoCompressionSkipped = false;
+
+  if (isVideo) {
+    onStatus?.('Đang nén video trên backend, có thể mất vài phút nếu Render vừa khởi động...');
+    try {
+      optimizedFile = await compressVideoOnBackend(file);
+    } catch (error) {
+      videoCompressionSkipped = true;
+      console.warn('Backend video compression failed, uploading original video:', error?.message || error);
+      onStatus?.('Không nén được video, đang lưu bản gốc...');
+      optimizedFile = file;
+    }
+  }
+
   if (isImage) onStatus?.('Đang nén ảnh trước khi lưu...');
   const blob = isImage ? await compressImage(file) : optimizedFile;
   onStatus?.('Đang tải tệp lên Firebase...');
@@ -217,6 +230,7 @@ export async function uploadMoodFile({ file, user, namespace = 'mood-checkins', 
       type: blob.type || file.type || 'application/octet-stream',
       originalSize: wasCompressed ? file.size : undefined,
       compressed: wasCompressed || undefined,
+      compressionSkipped: videoCompressionSkipped || undefined,
       kind: kindFor(file),
     };
   } catch (error) {

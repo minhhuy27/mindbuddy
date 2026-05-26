@@ -120,7 +120,15 @@ async function removeTempFile(filePath) {
   }
 }
 
-router.post('/compress-video', uploadVideo.single('video'), async (req, res) => {
+router.post('/compress-video', (req, res, next) => {
+  uploadVideo.single('video')(req, res, error => {
+    if (!error) return next();
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: 'Video is too large' });
+    }
+    return res.status(400).json({ error: error.message || 'Invalid video upload' });
+  });
+}, async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'Missing video file' });
   }
