@@ -246,11 +246,12 @@ function buildMetricEvidence(moodLogs) {
 }
 
 export default function WeeklyInsight() {
-  const { moodLogs, MOODS, weeklyInsight, saveWeeklyInsight, userGoal } = useApp();
+  const { moodLogs, MOODS, weeklyInsight, saveWeeklyInsight, userGoal, currentGoal } = useApp();
   const [insight, setInsight] = useState(weeklyInsight?.text || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const inFlightRef = useRef(false);
+  const goalForAi = currentGoal?.label || userGoal;
 
   // Đồng bộ khi Firestore load xong (weeklyInsight thay đổi từ null → có data)
   useEffect(() => {
@@ -267,12 +268,12 @@ export default function WeeklyInsight() {
     const noCache = !cache?.text;
     const hasNewLog = cache && moodLogs.length > (cache.logCount || 0);
     const expired = cache && (Date.now() - (cache.savedAt || 0)) > CACHE_TTL;
-    const goalChanged = cache && cache.goal !== userGoal;
+    const goalChanged = cache && cache.goal !== goalForAi;
 
     if (noCache || hasNewLog || expired || goalChanged) {
       fetchInsight();
     }
-  }, [moodLogs.length, userGoal]); // eslint-disable-line
+  }, [moodLogs.length, goalForAi]); // eslint-disable-line
 
   const fetchInsight = async () => {
     if (inFlightRef.current) return;
@@ -280,10 +281,10 @@ export default function WeeklyInsight() {
     setLoading(true);
     setError('');
     try {
-      const result = await analyzeWeeklyTrend(moodLogs, MOODS, userGoal);
+      const result = await analyzeWeeklyTrend(moodLogs, MOODS, goalForAi);
       if (result) {
         setInsight(result);
-        saveWeeklyInsight(result, moodLogs.length, userGoal);
+        saveWeeklyInsight(result, moodLogs.length, goalForAi);
       } else {
         setError('Chưa thể phân tích lúc này. Vui lòng thử lại sau.');
       }

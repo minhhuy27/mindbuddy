@@ -1,8 +1,8 @@
 import React from 'react';
-import { normalizeMoodAttachments } from '../utils/moodImages';
+import { displayAttachmentName, normalizeMoodAttachments } from '../utils/moodImages';
 import './MediaAttachments.css';
 
-export default function MediaAttachments({ attachments, label = 'Tệp check-in', onOpenImage, compact = false }) {
+export default function MediaAttachments({ attachments, label = 'Tệp check-in', onOpenImage, compact = false, date }) {
   const items = normalizeMoodAttachments(attachments);
   if (!items.length) return null;
 
@@ -10,6 +10,7 @@ export default function MediaAttachments({ attachments, label = 'Tệp check-in'
     <div className={`media-attachments ${compact ? 'compact' : ''}`}>
       {items.map((item, index) => {
         const itemLabel = `${label} ${index + 1}`;
+        const displayName = displayAttachmentName(item, { date, index, total: items.length });
         if (item.kind === 'image') {
           const content = <img src={item.url} alt={itemLabel} />;
           return onOpenImage ? (
@@ -32,21 +33,21 @@ export default function MediaAttachments({ attachments, label = 'Tệp check-in'
           return (
             <div key={`${item.url}-${index}`} className="media-attachment video">
               <video src={item.url} controls preload="metadata" />
-              <span>{item.name || itemLabel}</span>
+              <span title={item.name || itemLabel}>{displayName}</span>
             </div>
           );
         }
         if (item.kind === 'audio') {
           return (
             <div key={`${item.url}-${index}`} className="media-attachment audio">
-              <span>Âm thanh: {item.name || itemLabel}</span>
+              <span title={item.name || itemLabel}>{displayName}</span>
               <audio src={item.url} controls preload="metadata" />
             </div>
           );
         }
         return (
-          <a key={`${item.url}-${index}`} className="media-attachment file" href={item.url} target="_blank" rel="noreferrer">
-            Tệp: {item.name || itemLabel}
+          <a key={`${item.url}-${index}`} className="media-attachment file" href={item.url} target="_blank" rel="noreferrer" title={item.name || itemLabel}>
+            {displayName}
           </a>
         );
       })}

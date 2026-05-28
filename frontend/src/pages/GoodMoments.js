@@ -291,7 +291,7 @@ export default function GoodMoments() {
               <button type="button" onClick={() => setSelectedMoment(null)} aria-label="Đóng khoảnh khắc">×</button>
             </div>
             <div className="good-modal-body">
-              <MediaAttachments attachments={selectedMoment.attachments} label="Tệp khoảnh khắc" />
+              <MediaAttachments attachments={selectedMoment.attachments} label="Tệp khoảnh khắc" date={selectedMoment.date} />
               <div className="good-modal-note" style={{ '--moment-color': selectedMoment.mood?.color || '#a29bfe' }}>
                 <RichText text={selectedMoment.note} fallback="Một khoảnh khắc ổn đã được ghi lại." className="good-note-text" />
                 {selectedMoment.causes.length > 0 && (

@@ -11,6 +11,9 @@ const PRIMARY_NAV = [
 ];
 
 const MORE_NAV = [
+  { path: '/profile', icon: '👤', label: 'Hồ sơ' },
+  { path: '/memories', icon: '🖼️', label: 'Ký ức' },
+  { path: '/storage', icon: '🧹', label: 'Dung lượng' },
   { path: '/daily-review', icon: '🪞', label: 'Nhìn lại' },
   { path: '/good-moments', icon: '✨', label: 'Điều tốt' },
   { path: '/community', icon: '🌍', label: 'Góc riêng' },
@@ -77,11 +80,17 @@ export default function Layout({ children }) {
                         <small>
                           {item.path === '/daily-review'
                             ? 'Tóm tắt ngày'
-                            : item.path === '/good-moments'
-                              ? 'Khoảnh khắc ổn'
-                              : item.path === '/community'
-                                ? 'Xả lòng, thư tương lai'
-                                : 'Thói quen và huy hiệu'}
+                            : item.path === '/profile'
+                              ? 'Mục tiêu và chỉ số'
+                            : item.path === '/memories'
+                              ? 'Ảnh, video, âm thanh'
+                              : item.path === '/storage'
+                                ? 'Dọn Firebase'
+                                : item.path === '/good-moments'
+                                  ? 'Khoảnh khắc ổn'
+                                  : item.path === '/community'
+                                    ? 'Xả lòng, thư tương lai'
+                                    : 'Thói quen và huy hiệu'}
                         </small>
                       </div>
                     </Link>

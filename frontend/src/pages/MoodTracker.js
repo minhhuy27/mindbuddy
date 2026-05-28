@@ -7,7 +7,7 @@ import { vi } from 'date-fns/locale';
 import { analyzeMood, createChat, detectDanger, summarizeDay } from '../utils/aiService';
 import { exportMoodPDF, exportAllMoodPDF } from '../utils/exportPDF';
 import { uploadMoodFiles } from '../utils/imageUpload';
-import { normalizeMoodAttachments } from '../utils/moodImages';
+import { displayAttachmentName, normalizeMoodAttachments } from '../utils/moodImages';
 import CrisisPanel from '../components/CrisisPanel';
 import RichText from '../components/RichText';
 import MediaAttachments from '../components/MediaAttachments';
@@ -30,6 +30,7 @@ const DEFAULT_METRICS = {
 };
 
 const VALID_TABS = ['today', 'history', 'insight', 'export'];
+const AUDIO_RECORDING_LIMIT = 10 * 60;
 
 function normalizeTab(tab) {
   return VALID_TABS.includes(tab) ? tab : 'today';
@@ -43,6 +44,28 @@ function normalizeMetrics(metrics) {
   }, {});
 }
 
+function getBestAudioMimeType() {
+  if (typeof window === 'undefined' || !window.MediaRecorder?.isTypeSupported) return '';
+  return [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4',
+    'audio/mpeg',
+  ].find(type => window.MediaRecorder.isTypeSupported(type)) || '';
+}
+
+function getAudioExtension(type = '') {
+  if (type.includes('mp4')) return 'm4a';
+  if (type.includes('mpeg')) return 'mp3';
+  return 'webm';
+}
+
+function formatDuration(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
+}
+
 function metricSummary(metrics) {
   if (!metrics) return '';
   const normalized = normalizeMetrics(metrics);
@@ -50,6 +73,43 @@ function metricSummary(metrics) {
 }
 
 const logAttachments = normalizeMoodAttachments;
+
+function extractLogCauses(note = '') {
+  return note.match(/\[(.+)\]$/)?.[1]?.split(', ').filter(Boolean) || [];
+}
+
+function cleanLogNote(note = '') {
+  return String(note).replace(/\s*\[.+\]$/, '').trim();
+}
+
+function metricValue(metrics, id) {
+  const value = Number(metrics?.[id]);
+  return Number.isFinite(value) ? Math.min(5, Math.max(1, value)) : null;
+}
+
+function normalizeSearchText(value = '') {
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .trim();
+}
+
+function attachmentSearchText(attachment) {
+  const kindLabels = {
+    image: 'anh hinh anh photo image',
+    video: 'video clip',
+    audio: 'audio am thanh ghi am voice',
+    file: 'tep file dinh kem',
+  };
+  return [
+    attachment?.name,
+    attachment?.kind,
+    kindLabels[attachment?.kind] || '',
+  ].filter(Boolean).join(' ');
+}
 
 // Bảng emoji gợi ý cho custom mood
 const EMOJI_SUGGESTIONS = [
@@ -249,7 +309,7 @@ export default function MoodTracker() {
     MOODS, customMoods, moodLogs,
     addMoodLog, updateMoodLog, deleteMoodLog,
     addCustomMood, deleteCustomMood,
-    user, todayAI, saveTodayAI, aiMemory, saveAiMemory, userGoal,
+    user, todayAI, saveTodayAI, aiMemory, saveAiMemory, userGoal, currentGoal,
     causeOptions, saveCauseOptions,
   } = useApp();
 
@@ -291,9 +351,15 @@ export default function MoodTracker() {
   const [removeExistingImage, setRemoveExistingImage] = useState(false);
   const [imageError, setImageError] = useState('');
   const [photoLightbox, setPhotoLightbox] = useState(null);
+  const [recordingState, setRecordingState] = useState('idle');
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const noteTextareaRef = React.useRef(null);
   const imageInputRef = React.useRef(null);
   const imagePreviewsRef = React.useRef([]);
+  const mediaRecorderRef = React.useRef(null);
+  const recordingStreamRef = React.useRef(null);
+  const recordingChunksRef = React.useRef([]);
+  const recordingTimerRef = React.useRef(null);
 
   // ── Custom mood modal ──
   const [showModal, setShowModal] = useState(false);
@@ -324,6 +390,16 @@ export default function MoodTracker() {
   const [exportYear, setExportYear] = useState(now.getFullYear());
   const [exporting, setExporting] = useState(false); // 'month' | 'all' | false
   const [historyRange, setHistoryRange] = useState(14);
+  const [historyFilters, setHistoryFilters] = useState({
+    search: '',
+    mood: 'all',
+    cause: 'all',
+    media: 'all',
+    stressHigh: false,
+    sleepLow: false,
+    from: '',
+    to: '',
+  });
   const [selectedDayDetail, setSelectedDayDetail] = useState(null);
   const activeCauses = React.useMemo(() => (
     Array.isArray(causeOptions) ? causeOptions : DEFAULT_CAUSES
@@ -349,6 +425,23 @@ export default function MoodTracker() {
     setExportYear(now.getFullYear());
   };
 
+  const updateHistoryFilter = (key, value) => {
+    setHistoryFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const resetHistoryFilters = () => {
+    setHistoryFilters({
+      search: '',
+      mood: 'all',
+      cause: 'all',
+      media: 'all',
+      stressHigh: false,
+      sleepLow: false,
+      from: '',
+      to: '',
+    });
+  };
+
   React.useEffect(() => {
     if (todayAIData?.advice && todayAIData?.moodLabel) {
       chatFnRef.current = createChat(
@@ -356,12 +449,12 @@ export default function MoodTracker() {
         todayAIData.moodLabel,
         todayAIData.chatMessages || [],
         aiMemory || [],
-        userGoal
+        currentGoal?.label || userGoal
       );
       setAiAdvice(todayAIData.advice);
       setChatMessages(todayAIData.chatMessages || []);
     }
-  }, [todayAI, userGoal]);
+  }, [todayAI, userGoal, currentGoal?.label]);
 
   React.useEffect(() => {
     setDraftReady(false);
@@ -519,7 +612,45 @@ export default function MoodTracker() {
     setMetrics(prev => ({ ...prev, [id]: Number(value) }));
   };
 
+  const clearRecordingTimer = () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  };
+
+  const stopRecordingStream = () => {
+    recordingStreamRef.current?.getTracks().forEach(track => track.stop());
+    recordingStreamRef.current = null;
+  };
+
+  const discardActiveRecording = () => {
+    clearRecordingTimer();
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.onstop = null;
+      recorder.stop();
+    }
+    mediaRecorderRef.current = null;
+    recordingChunksRef.current = [];
+    stopRecordingStream();
+    setRecordingState('idle');
+    setRecordingSeconds(0);
+  };
+
+  const addRecordedAudio = (file) => {
+    const preview = {
+      id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
+      file,
+      url: URL.createObjectURL(file),
+    };
+    setImageFiles(prev => [...prev, file]);
+    setImagePreviews(prev => [...prev, preview]);
+    setRemoveExistingImage(false);
+  };
+
   const resetForm = () => {
+    discardActiveRecording();
     setSelected(null);
     setNote('');
     setCauses([]);
@@ -541,6 +672,15 @@ export default function MoodTracker() {
 
   React.useEffect(() => () => {
     imagePreviewsRef.current.forEach(item => URL.revokeObjectURL(item.url));
+    clearRecordingTimer();
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.onstop = null;
+      recorder.stop();
+    }
+    mediaRecorderRef.current = null;
+    recordingChunksRef.current = [];
+    stopRecordingStream();
   }, []);
 
   React.useEffect(() => {
@@ -570,6 +710,10 @@ export default function MoodTracker() {
       setImageError('Dung lượng tối đa: ảnh 8MB, audio 25MB, video 100MB.');
       return;
     }
+    const largeVideo = files.find(file => file.type.startsWith('video/') && file.size > 50 * 1024 * 1024);
+    if (largeVideo) {
+      setImageError('Video trên 50MB có thể làm đầy Firebase nhanh. MindBuddy sẽ thử nén qua backend, nhưng bạn nên dùng video ngắn nếu có thể.');
+    }
     const previews = files.map(file => ({
       id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
       file,
@@ -592,6 +736,97 @@ export default function MoodTracker() {
     if (imageInputRef.current) imageInputRef.current.value = '';
   };
 
+  const startAudioRecording = async () => {
+    setImageError('');
+    if (recordingState !== 'idle') return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof window === 'undefined' || !window.MediaRecorder) {
+      setImageError('Trình duyệt này chưa hỗ trợ ghi âm trực tiếp. Bạn có thể chọn tệp audio có sẵn.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = getBestAudioMimeType();
+      const recorder = new window.MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      recordingStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      recordingChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size > 0) recordingChunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = () => {
+        clearRecordingTimer();
+        const finalType = recorder.mimeType || mimeType || 'audio/webm';
+        const blob = new Blob(recordingChunksRef.current, { type: finalType });
+        recordingChunksRef.current = [];
+        mediaRecorderRef.current = null;
+        stopRecordingStream();
+        setRecordingState('idle');
+        setRecordingSeconds(0);
+
+        if (!blob.size) {
+          setImageError('Bản ghi âm quá ngắn hoặc micro chưa cấp dữ liệu.');
+          return;
+        }
+        if (blob.size > 25 * 1024 * 1024) {
+          setImageError('File ghi âm vượt 25MB. Hãy thử ghi ngắn hơn hoặc chọn tệp đã nén.');
+          return;
+        }
+
+        const extension = getAudioExtension(finalType);
+        const file = new File([blob], `mindbuddy-ghi-am-${format(new Date(), 'yyyyMMdd-HHmmss')}.${extension}`, {
+          type: finalType,
+          lastModified: Date.now(),
+        });
+        addRecordedAudio(file);
+      };
+
+      recorder.onerror = () => {
+        clearRecordingTimer();
+        recordingChunksRef.current = [];
+        mediaRecorderRef.current = null;
+        stopRecordingStream();
+        setRecordingState('idle');
+        setRecordingSeconds(0);
+        setImageError('Không thể ghi âm. Hãy kiểm tra quyền micro của trình duyệt.');
+      };
+
+      recorder.start(1000);
+      setRecordingState('recording');
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds(prev => {
+          const next = prev + 1;
+          if (next >= AUDIO_RECORDING_LIMIT) {
+            window.setTimeout(() => stopAudioRecording(), 0);
+          }
+          return next;
+        });
+      }, 1000);
+    } catch (error) {
+      console.error('Audio recording error:', error);
+      clearRecordingTimer();
+      recordingChunksRef.current = [];
+      mediaRecorderRef.current = null;
+      stopRecordingStream();
+      setRecordingState('idle');
+      setRecordingSeconds(0);
+      setImageError('Không truy cập được micro. Hãy cho phép quyền micro rồi thử lại.');
+    }
+  };
+
+  function stopAudioRecording() {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') {
+      discardActiveRecording();
+      return;
+    }
+    setRecordingState('stopping');
+    recorder.stop();
+  }
+
   const removeExistingImageAt = (index) => {
     setExistingImages(prev => prev.filter((_, i) => i !== index));
     setRemoveExistingImage(true);
@@ -601,7 +836,7 @@ export default function MoodTracker() {
     if (!image?.url) return;
     setPhotoLightbox({
       url: image.url,
-      name: image.name || label || 'Ảnh check-in',
+      name: displayAttachmentName(image),
       label: label || 'Ảnh check-in',
     });
   };
@@ -746,6 +981,10 @@ export default function MoodTracker() {
 
   const handleSave = async () => {
     if (!selected || saving) return;
+    if (recordingState !== 'idle') {
+      setImageError('Hãy dừng ghi âm trước khi lưu check-in.');
+      return;
+    }
     setSaving(true);
     setSaveStatus('');
     setImageError('');
@@ -800,7 +1039,7 @@ export default function MoodTracker() {
         fullNote,
         recentMoods,
         aiMemory: aiMemory || [],
-        userGoal,
+        userGoal: currentGoal?.label || userGoal,
       });
     } catch (err) {
       console.error('Save mood image/check-in error:', err);
@@ -881,10 +1120,78 @@ export default function MoodTracker() {
     }
   };
 
+  const availableHistoryCauses = React.useMemo(() => {
+    const fromLogs = moodLogs.flatMap(log => extractLogCauses(log.note || ''));
+    return Array.from(new Set([...activeCauses, ...fromLogs])).filter(Boolean);
+  }, [activeCauses, moodLogs]);
+
+  const hasAdvancedHistoryFilters = (
+    !!historyFilters.search.trim() ||
+    historyFilters.mood !== 'all' ||
+    historyFilters.cause !== 'all' ||
+    historyFilters.media !== 'all' ||
+    historyFilters.stressHigh ||
+    historyFilters.sleepLow ||
+    !!historyFilters.from ||
+    !!historyFilters.to
+  );
+
+  const matchesHistoryFilters = (log) => {
+    const logDate = new Date(log.date);
+    const attachments = logAttachments(log);
+    const logCauses = extractLogCauses(log.note || '');
+    const mood = allMoods.find(item => item.id === log.mood);
+    const searchQuery = normalizeSearchText(historyFilters.search);
+
+    if (searchQuery) {
+      const dateLabels = [
+        format(logDate, 'dd/MM/yyyy'),
+        format(logDate, 'dd/MM'),
+        format(logDate, 'yyyy-MM-dd'),
+        format(logDate, 'EEEE dd/MM/yyyy', { locale: vi }),
+        format(logDate, 'HH:mm dd/MM/yyyy'),
+      ];
+      const haystack = normalizeSearchText([
+        log.note,
+        cleanLogNote(log.note || ''),
+        mood?.label,
+        mood?.emoji,
+        ...logCauses,
+        ...dateLabels,
+        ...attachments.map(attachmentSearchText),
+      ].filter(Boolean).join(' '));
+      if (!haystack.includes(searchQuery)) return false;
+    }
+
+    if (historyFilters.from) {
+      const fromDate = new Date(`${historyFilters.from}T00:00:00`);
+      if (logDate < fromDate) return false;
+    }
+    if (historyFilters.to) {
+      const toDate = new Date(`${historyFilters.to}T23:59:59`);
+      if (logDate > toDate) return false;
+    }
+    if (historyFilters.mood !== 'all' && String(log.mood) !== historyFilters.mood) return false;
+
+    if (historyFilters.cause !== 'all' && !logCauses.includes(historyFilters.cause)) return false;
+
+    if (historyFilters.media === 'any' && attachments.length === 0) return false;
+    if (historyFilters.media === 'none' && attachments.length > 0) return false;
+    if (['image', 'video', 'audio'].includes(historyFilters.media) && !attachments.some(item => item.kind === historyFilters.media)) {
+      return false;
+    }
+
+    if (historyFilters.stressHigh && (metricValue(log.metrics, 'stress') ?? 0) < 4) return false;
+    if (historyFilters.sleepLow && (metricValue(log.metrics, 'sleep') ?? 5) > 2) return false;
+    return true;
+  };
+
+  const historyFilteredAllLogs = moodLogs.filter(matchesHistoryFilters);
+
   const filteredMoodLogs = (() => {
     const cutoff = subDays(new Date(), historyRange - 1);
     cutoff.setHours(0, 0, 0, 0);
-    return moodLogs.filter(l => new Date(l.date) >= cutoff);
+    return historyFilteredAllLogs.filter(l => new Date(l.date) >= cutoff);
   })();
 
   // Chart: log mới nhất mỗi ngày
@@ -904,7 +1211,7 @@ export default function MoodTracker() {
   })();
 
   const monthHeatmap = (() => {
-    const monthLogs = moodLogs
+    const monthLogs = historyFilteredAllLogs
       .filter(log => {
         const d = new Date(log.date);
         return d.getMonth() === exportMonth && d.getFullYear() === exportYear;
@@ -1229,9 +1536,30 @@ export default function MoodTracker() {
                         <strong>Tệp check-in</strong>
                         <span>Thêm ảnh, video hoặc âm thanh để sau này nhớ ngữ cảnh hơn.</span>
                       </div>
-                      <button type="button" className="btn-photo-select" onClick={() => imageInputRef.current?.click()}>
+                      <button type="button" className="btn-photo-select" onClick={() => imageInputRef.current?.click()} disabled={recordingState !== 'idle'}>
                         📎 Chọn tệp
                       </button>
+                    </div>
+                    <div className="quick-record-row">
+                      <button
+                        type="button"
+                        className={`btn-audio-record ${recordingState === 'recording' ? 'recording' : ''}`}
+                        onClick={recordingState === 'recording' ? stopAudioRecording : startAudioRecording}
+                        disabled={saving || recordingState === 'stopping'}
+                      >
+                        {recordingState === 'recording'
+                          ? `Dừng ${formatDuration(recordingSeconds)}`
+                          : recordingState === 'stopping'
+                            ? 'Đang xử lý...'
+                            : '🎙️ Ghi âm nhanh'}
+                      </button>
+                      {recordingState !== 'idle' && (
+                        <div className="recording-status" role="status">
+                          <span className="recording-pulse" />
+                          <strong>{recordingState === 'recording' ? 'Đang ghi âm' : 'Đang tạo tệp ghi âm'}</strong>
+                          <small>{formatDuration(recordingSeconds)} / {formatDuration(AUDIO_RECORDING_LIMIT)}</small>
+                        </div>
+                      )}
                     </div>
                     <input
                       ref={imageInputRef}
@@ -1247,7 +1575,13 @@ export default function MoodTracker() {
                           <div key={`${image.url}-${index}`} className="checkin-photo-preview">
                             {image.kind === 'image' && <img src={image.url} alt={`Ảnh check-in đã lưu ${index + 1}`} />}
                             {image.kind === 'video' && <video src={image.url} muted preload="metadata" />}
-                            {image.kind === 'audio' && <div className="media-file-preview">🎧<span>{image.name}</span></div>}
+                            {image.kind === 'audio' && (
+                              <div className="media-file-preview audio-preview">
+                                🎧
+                                <span title={image.name}>{displayAttachmentName(image)}</span>
+                                <audio src={image.url} controls preload="metadata" />
+                              </div>
+                            )}
                             <button type="button" onClick={() => removeExistingImageAt(index)}>Bỏ tệp</button>
                           </div>
                         ))}
@@ -1255,7 +1589,13 @@ export default function MoodTracker() {
                           <div key={preview.id} className="checkin-photo-preview">
                             {preview.file.type.startsWith('image/') && <img src={preview.url} alt={`Ảnh check-in xem trước ${index + 1}`} />}
                             {preview.file.type.startsWith('video/') && <video src={preview.url} muted preload="metadata" />}
-                            {preview.file.type.startsWith('audio/') && <div className="media-file-preview">🎧<span>{preview.file.name}</span></div>}
+                            {preview.file.type.startsWith('audio/') && (
+                              <div className="media-file-preview audio-preview">
+                                🎧
+                                <span title={preview.file.name}>{displayAttachmentName({ type: preview.file.type, kind: preview.file.type?.startsWith('audio/') ? 'audio' : 'file' }, { date: new Date() })}</span>
+                                <audio src={preview.url} controls preload="metadata" />
+                              </div>
+                            )}
                             <button type="button" onClick={() => removeSelectedImage(index)}>
                               Bỏ tệp
                             </button>
@@ -1279,7 +1619,7 @@ export default function MoodTracker() {
                 <button
                   className="btn btn-primary mt-4 w-full"
                   onClick={handleSave}
-                  disabled={saving}
+                  disabled={saving || recordingState !== 'idle'}
                 >
                   {saving
                     ? <span className="btn-loading">⏳ {saveStatus || 'Đang lưu...'}</span>
@@ -1350,13 +1690,13 @@ export default function MoodTracker() {
                             setChatMessages([]);
                             setChatError('');
                             setFailedChatMessage('');
-                            chatFnRef.current = createChat(aiAdvice, todayAI?.moodLabel || '', [], aiMemory || [], userGoal);
+                            chatFnRef.current = createChat(aiAdvice, todayAI?.moodLabel || '', [], aiMemory || [], currentGoal?.label || userGoal);
                             saveTodayAI({ advice: aiAdvice, moodLabel: todayAI?.moodLabel || '', chatMessages: [] });
                           }}>🔄 Mới</button>
                         )}
                         <button className="chat-action-btn" onClick={() => {
                           if (!chatFnRef.current)
-                            chatFnRef.current = createChat(aiAdvice, todayAI?.moodLabel || '', chatMessages, aiMemory || [], userGoal);
+                            chatFnRef.current = createChat(aiAdvice, todayAI?.moodLabel || '', chatMessages, aiMemory || [], currentGoal?.label || userGoal);
                           setChatOpen(o => !o);
                         }}>
                           {chatOpen ? '▲' : '▼'}
@@ -1439,6 +1779,111 @@ export default function MoodTracker() {
                   {days} ngày
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="history-advanced-filters card mb-4">
+            <div className="history-advanced-head">
+              <div>
+                <h3>Bộ lọc lịch sử</h3>
+                <p className="text-muted">
+                  Đang hiển thị {filteredMoodLogs.length}/{moodLogs.length} ghi chú
+                  {hasAdvancedHistoryFilters ? ' theo bộ lọc hiện tại.' : ' trong khoảng đã chọn.'}
+                </p>
+              </div>
+              {hasAdvancedHistoryFilters && (
+                <button type="button" className="btn btn-secondary" onClick={resetHistoryFilters}>
+                  Xóa lọc
+                </button>
+              )}
+            </div>
+
+            <label className="history-search-field">
+              <span>Tìm kiếm nhật ký</span>
+              <div>
+                <input
+                  type="search"
+                  value={historyFilters.search}
+                  onChange={e => updateHistoryFilter('search', e.target.value)}
+                  placeholder="Tìm note, nguyên nhân, mood, ngày, ảnh/video/audio..."
+                />
+                {historyFilters.search && (
+                  <button type="button" onClick={() => updateHistoryFilter('search', '')} aria-label="Xóa tìm kiếm">
+                    ×
+                  </button>
+                )}
+              </div>
+            </label>
+
+            <div className="history-filter-grid">
+              <label>
+                <span>Mood</span>
+                <select value={historyFilters.mood} onChange={e => updateHistoryFilter('mood', e.target.value)}>
+                  <option value="all">Tất cả mood</option>
+                  {allMoods.map(mood => (
+                    <option key={mood.id} value={String(mood.id)}>
+                      {mood.emoji ? `${mood.emoji} ` : ''}{mood.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span>Nguyên nhân</span>
+                <select value={historyFilters.cause} onChange={e => updateHistoryFilter('cause', e.target.value)}>
+                  <option value="all">Tất cả nguyên nhân</option>
+                  {availableHistoryCauses.map(cause => (
+                    <option key={cause} value={cause}>{cause}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span>Media</span>
+                <select value={historyFilters.media} onChange={e => updateHistoryFilter('media', e.target.value)}>
+                  <option value="all">Tất cả</option>
+                  <option value="any">Có tệp đính kèm</option>
+                  <option value="image">Có ảnh</option>
+                  <option value="video">Có video</option>
+                  <option value="audio">Có âm thanh</option>
+                  <option value="none">Không có tệp</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Từ ngày</span>
+                <input
+                  type="date"
+                  value={historyFilters.from}
+                  onChange={e => updateHistoryFilter('from', e.target.value)}
+                />
+              </label>
+
+              <label>
+                <span>Đến ngày</span>
+                <input
+                  type="date"
+                  value={historyFilters.to}
+                  onChange={e => updateHistoryFilter('to', e.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className="history-quick-toggles" aria-label="Lọc nhanh chỉ số">
+              <button
+                type="button"
+                className={historyFilters.stressHigh ? 'active' : ''}
+                onClick={() => updateHistoryFilter('stressHigh', !historyFilters.stressHigh)}
+              >
+                Stress cao ≥ 4/5
+              </button>
+              <button
+                type="button"
+                className={historyFilters.sleepLow ? 'active' : ''}
+                onClick={() => updateHistoryFilter('sleepLow', !historyFilters.sleepLow)}
+              >
+                Ngủ thấp ≤ 2/5
+              </button>
             </div>
           </div>
 
@@ -1637,6 +2082,7 @@ export default function MoodTracker() {
                                 <MediaAttachments
                                   attachments={attachments}
                                   label={`Tệp check-in lúc ${format(new Date(log.date), 'HH:mm')}`}
+                                  date={log.date}
                                   onOpenImage={openPhotoLightbox}
                                 />
                                 {cleanNote && <RichText text={cleanNote} className="entry-note" />}
@@ -1650,7 +2096,11 @@ export default function MoodTracker() {
                 </div>
                 {grouped.length === 0 && (
                   <div className="empty-timeline">
-                    <p>Không có ghi chú trong {historyRange} ngày gần đây.</p>
+                    <p>
+                      {hasAdvancedHistoryFilters
+                        ? 'Không có ghi chú nào khớp với bộ lọc hiện tại.'
+                        : `Không có ghi chú trong ${historyRange} ngày gần đây.`}
+                    </p>
                   </div>
                 )}
               </>
@@ -1747,6 +2197,7 @@ export default function MoodTracker() {
                     <MediaAttachments
                       attachments={attachments}
                       label={`Tệp check-in lúc ${format(new Date(log.date), 'HH:mm')}`}
+                      date={log.date}
                       onOpenImage={openPhotoLightbox}
                     />
                     <RichText text={cleanNote} fallback="Không có ghi chú thêm." className="entry-note" />
