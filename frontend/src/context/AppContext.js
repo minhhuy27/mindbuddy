@@ -24,6 +24,12 @@ export const BADGES = [
   { id: 'community_helper', name: 'Tự nâng đỡ', icon: '💝', desc: 'Tự ôm mình trong góc nhẹ lòng' },
 ];
 
+export const DEFAULT_GOALS = [
+  { id: 'stress', icon: '🌿', label: 'Giảm stress', desc: 'Ưu tiên hạ căng thẳng và ổn định cảm xúc.' },
+  { id: 'sleep', icon: '🌙', label: 'Ngủ tốt hơn', desc: 'Ưu tiên nhịp nghỉ ngơi, phục hồi và năng lượng.' },
+  { id: 'study', icon: '🍅', label: 'Tập trung học tập', desc: 'Ưu tiên năng lượng, Pomodoro và kế hoạch học.' },
+];
+
 const DEFAULT_DATA = {
   moodLogs: [],
   pomodoroCount: 0,
@@ -36,6 +42,7 @@ const DEFAULT_DATA = {
   customMoods: [],
   causeOptions: null,
   userGoal: 'stress',
+  goalOptions: null,
   dailyReviews: {},
   weeklyInsight: null, // { text, logCount, savedAt }
   confessions: [
@@ -44,6 +51,27 @@ const DEFAULT_DATA = {
     { id: 3, text: 'Hôm nay bảo vệ đồ án thành công! 🎉', hugs: 25, time: '1 ngày trước', x: 40, y: 70 },
   ],
 };
+
+function normalizeGoalOptions(goals) {
+  const source = Array.isArray(goals) && goals.length ? goals : DEFAULT_GOALS;
+  const seen = new Set();
+  const normalized = source
+    .map((goal, index) => {
+      const label = String(goal?.label || '').trim();
+      if (!label) return null;
+      let id = String(goal?.id || `goal_${Date.now()}_${index}`).trim();
+      if (!id || seen.has(id)) id = `goal_${Date.now()}_${index}`;
+      seen.add(id);
+      return {
+        id,
+        icon: String(goal?.icon || '🎯').trim().slice(0, 4) || '🎯',
+        label,
+        desc: String(goal?.desc || 'Theo dõi điều này trong các check-in và insight.').trim(),
+      };
+    })
+    .filter(Boolean);
+  return normalized.length ? normalized : DEFAULT_GOALS;
+}
 
 export function AppProvider({ children }) {
   const [user, setUser] = useState(undefined); // undefined = loading
@@ -254,6 +282,22 @@ export function AppProvider({ children }) {
     await save({ causeOptions: normalized });
   };
 
+  const goalOptions = normalizeGoalOptions(data.goalOptions);
+  const currentGoal = goalOptions.find(goal => goal.id === data.userGoal) || goalOptions[0] || DEFAULT_GOALS[0];
+
+  const saveGoalOptions = async (next) => {
+    const normalized = normalizeGoalOptions(next);
+    const nextGoal = normalized.some(goal => goal.id === data.userGoal)
+      ? data.userGoal
+      : normalized[0].id;
+    await save({
+      goalOptions: normalized,
+      userGoal: nextGoal,
+      weeklyInsight: null,
+      todayAI: null,
+    });
+  };
+
   const todayMood = data.moodLogs.find(l => new Date(l.date).toDateString() === new Date().toDateString());
 
   if (user === undefined) return (
@@ -273,6 +317,9 @@ export function AppProvider({ children }) {
       addConfession, hugConfession,
       addCustomMood, deleteCustomMood,
       saveCauseOptions,
+      goalOptions,
+      currentGoal,
+      saveGoalOptions,
       growGarden,
       setEmergencyContact: (v) => save({ emergencyContact: v }),
       setUserGoal: (v) => save({ userGoal: v, weeklyInsight: null, todayAI: null }),

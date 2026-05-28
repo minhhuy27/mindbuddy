@@ -265,7 +265,7 @@ function buildLocalReview(entries, pomodoros) {
 
 export default function DailyReview() {
   const {
-    user, moodLogs, MOODS, customMoods, userGoal,
+    user, moodLogs, MOODS, customMoods, userGoal, currentGoal,
     dailyReviews, saveDailyReview,
   } = useApp();
   const [selectedDateKey, setSelectedDateKey] = React.useState(keyForDate(new Date()));
@@ -321,6 +321,7 @@ export default function DailyReview() {
       const mood = allMoods.find(m => m.id === log.mood);
       return {
         id: log.id,
+        date: log.date,
         time: formatTime(log.date),
         moodLabel: mood?.label || 'Không rõ',
         moodEmoji: mood?.emoji || '',
@@ -354,6 +355,7 @@ export default function DailyReview() {
   const timeline = React.useMemo(() => {
     const moodEvents = entries.map(entry => ({
       type: 'mood',
+      date: entry.date,
       time: entry.time,
       sortTime: entry.time,
       title: `${entry.moodEmoji} ${entry.moodLabel}`,
@@ -440,7 +442,7 @@ export default function DailyReview() {
       date: format(selectedDate, 'dd/MM/yyyy'),
       entries,
       pomodoros: dayPomodoros,
-      userGoal,
+      userGoal: currentGoal?.label || userGoal,
     });
     if (aiReview) {
       const normalizedReview = normalizeReview(aiReview, localReview);
@@ -455,7 +457,7 @@ export default function DailyReview() {
       setNotice('AI chưa phản hồi được, MindBuddy đang dùng bản tóm tắt nhanh từ dữ liệu của bạn.');
     }
     setLoading(false);
-  }, [dayPomodoros, entries, hasData, loading, localReview, saveDailyReview, selectedDate, selectedDateKey, signature, userGoal]);
+  }, [dayPomodoros, entries, hasData, loading, localReview, saveDailyReview, selectedDate, selectedDateKey, signature, userGoal, currentGoal?.label]);
 
   React.useEffect(() => {
     if (!hasData || hasFreshCache) return;
@@ -560,7 +562,7 @@ export default function DailyReview() {
                     <div>
                       <strong>{event.title}</strong>
                       <RichText text={event.detail} className="daily-event-note" />
-                      <MediaAttachments attachments={event.attachments} label={`Tệp check-in lúc ${event.time}`} compact />
+                      <MediaAttachments attachments={event.attachments} label={`Tệp check-in lúc ${event.time}`} date={event.date} compact />
                     </div>
                   </div>
                 ))}

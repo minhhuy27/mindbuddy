@@ -6,6 +6,9 @@ import Dashboard from './pages/Dashboard';
 import DailyReview from './pages/DailyReview';
 import Needs from './pages/Needs';
 import GoodMoments from './pages/GoodMoments';
+import MediaCenter from './pages/MediaCenter';
+import StorageManager from './pages/StorageManager';
+import Profile from './pages/Profile';
 import MoodTracker from './pages/MoodTracker';
 import Pomodoro from './pages/Pomodoro';
 import Community from './pages/Community';
@@ -23,6 +26,9 @@ function AppRoutes() {
         <Route path="/needs" element={<Needs />} />
         <Route path="/daily-review" element={<DailyReview />} />
         <Route path="/good-moments" element={<GoodMoments />} />
+        <Route path="/memories" element={<MediaCenter />} />
+        <Route path="/storage" element={<StorageManager />} />
+        <Route path="/profile" element={<Profile />} />
         <Route path="/mood" element={<MoodTracker />} />
         <Route path="/pomodoro" element={<Pomodoro />} />
         <Route path="/community" element={<Community />} />

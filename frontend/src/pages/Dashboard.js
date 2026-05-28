@@ -11,7 +11,7 @@ import RichText from '../components/RichText';
 import MediaAttachments from '../components/MediaAttachments';
 import { analyzeMood, detectDanger, summarizeDay } from '../utils/aiService';
 import { uploadMoodFiles } from '../utils/imageUpload';
-import { normalizeMoodAttachments } from '../utils/moodImages';
+import { displayAttachmentName, normalizeMoodAttachments } from '../utils/moodImages';
 import './Dashboard.css';
 
 const GOALS = [
@@ -34,6 +34,12 @@ const ENERGY_BUCKETS = [
   { id: 'evening', label: 'Tối', short: 'Tối', range: '18:00-04:59' },
 ];
 
+const POSITIVE_WORDS = [
+  'vui', 'ổn', 'tốt', 'tuyệt', 'thích', 'may mắn', 'biết ơn', 'nhẹ',
+  'dễ chịu', 'bình yên', 'xong', 'hoàn thành', 'tiến bộ', 'đẹp', 'ngon',
+  'cười', 'thành công', 'hài lòng', 'đỡ hơn',
+];
+
 function getFirstName(user) {
   const source = user?.displayName || user?.email || 'bạn';
   return source.split('@')[0].split(' ')[0];
@@ -53,6 +59,30 @@ function averageNumbers(values) {
   return valid.reduce((sum, value) => sum + value, 0) / valid.length;
 }
 
+function cleanNote(note = '') {
+  return String(note).replace(/\s*\[.+\]$/, '').trim();
+}
+
+function extractCauses(note = '') {
+  return String(note).match(/\[(.+)\]$/)?.[1]?.split(', ').filter(Boolean) || [];
+}
+
+function metricValue(metrics, key) {
+  const value = Number(metrics?.[key]);
+  return Number.isFinite(value) ? Math.min(5, Math.max(1, value)) : null;
+}
+
+function dateKey(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return format(date, 'yyyy-MM-dd');
+}
+
+function hasPositiveSignal(note = '', moodScore = 0) {
+  const lower = cleanNote(note).toLowerCase();
+  return moodScore >= 4 || POSITIVE_WORDS.some(word => lower.includes(word));
+}
+
 function readPomodoroMoodSessions(user) {
   try {
     const key = `mb_pomodoro_mood_sessions_${user?.uid || user?.email || 'guest'}`;
@@ -65,7 +95,7 @@ function readPomodoroMoodSessions(user) {
 export default function Dashboard() {
   const {
     user, moodLogs, MOODS, customMoods, pomodoroCount, gardenLevel, earnedBadges, BADGES,
-    getStreak, addMoodLog, userGoal, setUserGoal,
+    getStreak, addMoodLog, userGoal, setUserGoal, goalOptions, currentGoal,
     saveTodayAI, aiMemory, saveAiMemory,
   } = useApp();
   const [quickMood, setQuickMood] = React.useState(null);
@@ -93,7 +123,7 @@ export default function Dashboard() {
   const latestTodayMood = todayLogs[0];
   const latestMood = latestTodayMood ? allMoods.find(m => m.id === latestTodayMood.mood) : null;
   const latestMoodScore = latestMood?.score || 0;
-  const currentGoal = GOALS.find(g => g.id === userGoal) || GOALS[0];
+  const activeGoals = goalOptions?.length ? goalOptions : GOALS;
 
   const last7 = Array.from({ length: 7 }, (_, i) => {
     const d = subDays(today, 6 - i);
@@ -218,6 +248,126 @@ export default function Dashboard() {
     return { data, hasMetrics, bestFocus, highestStress, bestEnergy };
   }, [moodLogs, pomodoroMoodSessions]);
 
+  const personalPatterns = React.useMemo(() => {
+    const patterns = [];
+    const recentLogs = [...moodLogs]
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .slice(0, 60)
+      .map(log => {
+        const mood = allMoods.find(item => item.id === log.mood);
+        return {
+          ...log,
+          mood,
+          moodScore: mood?.score || 3,
+          cleanNote: cleanNote(log.note || ''),
+          causes: extractCauses(log.note || ''),
+        };
+      });
+
+    const highStressLogs = recentLogs
+      .filter(log => metricValue(log.metrics, 'stress') !== null && metricValue(log.metrics, 'stress') >= 4)
+      .slice(0, 8);
+    if (highStressLogs.length >= 2) {
+      const causeCounts = highStressLogs.flatMap(log => log.causes).reduce((acc, cause) => {
+        acc[cause] = (acc[cause] || 0) + 1;
+        return acc;
+      }, {});
+      const topCause = Object.entries(causeCounts).sort((a, b) => b[1] - a[1])[0];
+      if (topCause && topCause[1] >= 2) {
+        patterns.push({
+          id: 'stress-cause',
+          icon: '🔥',
+          title: 'Stress cao có mẫu lặp',
+          text: `${topCause[1]} lần stress cao gần đây liên quan đến ${topCause[0]}.`,
+          evidence: `${highStressLogs.length} check-in stress >= 4/5 được xét.`,
+          to: '/mood?tab=history',
+        });
+      }
+    }
+
+    const focusByDay = recentLogs.reduce((acc, log) => {
+      const key = dateKey(log.date);
+      const focus = metricValue(log.metrics, 'focus');
+      if (!key || focus === null) return acc;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(focus);
+      return acc;
+    }, {});
+    const pomodoroDays = new Set(pomodoroMoodSessions.map(session => dateKey(session.completedAt || session.date)).filter(Boolean));
+    const daysWithPomodoro = Object.entries(focusByDay)
+      .filter(([key]) => pomodoroDays.has(key))
+      .map(([, values]) => averageNumbers(values))
+      .filter(Number.isFinite);
+    const daysWithoutPomodoro = Object.entries(focusByDay)
+      .filter(([key]) => !pomodoroDays.has(key))
+      .map(([, values]) => averageNumbers(values))
+      .filter(Number.isFinite);
+    if (daysWithPomodoro.length >= 1 && daysWithoutPomodoro.length >= 2) {
+      const withAvg = averageNumbers(daysWithPomodoro);
+      const withoutAvg = averageNumbers(daysWithoutPomodoro);
+      if (withAvg !== null && withoutAvg !== null && Math.abs(withAvg - withoutAvg) >= 0.3) {
+        patterns.push({
+          id: 'pomodoro-focus',
+          icon: '🍅',
+          title: withAvg > withoutAvg ? 'Pomodoro đi cùng focus cao hơn' : 'Pomodoro thường xuất hiện vào ngày khó tập trung',
+          text: `Ngày có Pomodoro focus TB ${withAvg.toFixed(1)}/5, ngày không có Pomodoro ${withoutAvg.toFixed(1)}/5.`,
+          evidence: `${daysWithPomodoro.length} ngày có Pomodoro, ${daysWithoutPomodoro.length} ngày không có.`,
+          to: '/pomodoro',
+        });
+      }
+    }
+
+    const positiveBuckets = recentLogs
+      .filter(log => log.cleanNote && hasPositiveSignal(log.note, log.moodScore))
+      .reduce((acc, log) => {
+        const bucket = getDayBucket(log.date);
+        acc[bucket] = (acc[bucket] || 0) + 1;
+        return acc;
+      }, {});
+    const bucketLabels = ENERGY_BUCKETS.reduce((acc, bucket) => {
+      acc[bucket.id] = bucket.label.toLowerCase();
+      return acc;
+    }, {});
+    const topPositiveBucket = Object.entries(positiveBuckets).sort((a, b) => b[1] - a[1])[0];
+    if (topPositiveBucket && topPositiveBucket[1] >= 2) {
+      patterns.push({
+        id: 'positive-time',
+        icon: '✨',
+        title: 'Bạn có khung giờ dễ ghi điều tốt',
+        text: `${topPositiveBucket[1]} note tích cực gần đây xuất hiện vào buổi ${bucketLabels[topPositiveBucket[0]]}.`,
+        evidence: 'Tính từ mood cao hoặc từ khóa tích cực trong note.',
+        to: '/good-moments',
+      });
+    }
+
+    const lowSleepLogs = recentLogs.filter(log => {
+      const sleep = metricValue(log.metrics, 'sleep');
+      return sleep !== null && sleep <= 2;
+    });
+    const lowSleepStress = averageNumbers(lowSleepLogs.map(log => metricValue(log.metrics, 'stress')).filter(Number.isFinite));
+    const normalSleepStress = averageNumbers(
+      recentLogs
+        .filter(log => {
+          const sleep = metricValue(log.metrics, 'sleep');
+          return sleep !== null && sleep > 2;
+        })
+        .map(log => metricValue(log.metrics, 'stress'))
+        .filter(Number.isFinite)
+    );
+    if (lowSleepLogs.length >= 2 && lowSleepStress !== null) {
+      patterns.push({
+        id: 'sleep-stress',
+        icon: '🌙',
+        title: 'Ngủ thấp hay kéo stress lên',
+        text: `Những ngày ngủ <= 2/5 có stress TB ${lowSleepStress.toFixed(1)}/5${normalSleepStress !== null ? `, các ngày còn lại ${normalSleepStress.toFixed(1)}/5` : ''}.`,
+        evidence: `${lowSleepLogs.length} check-in ngủ thấp được xét.`,
+        to: '/mood?tab=history',
+      });
+    }
+
+    return patterns.slice(0, 4);
+  }, [allMoods, moodLogs, pomodoroMoodSessions]);
+
   const streak = getStreak(moodLogs);
   const gardenEmoji = gardenLevel < 20 ? '🌱' : gardenLevel < 50 ? '🌿' : gardenLevel < 80 ? '🌳' : '🌸';
   const nextPomodoro = Math.max(0, 10 - pomodoroCount);
@@ -302,6 +452,9 @@ export default function Dashboard() {
     if (files.some(file => file.type.startsWith('video/') && file.size > 100 * 1024 * 1024)) {
       setQuickImageError('Mỗi video tối đa 100MB.');
       return;
+    }
+    if (files.some(file => file.type.startsWith('video/') && file.size > 50 * 1024 * 1024)) {
+      setQuickImageError('Video trên 50MB có thể làm đầy Firebase nhanh. MindBuddy sẽ thử nén qua backend trước khi lưu.');
     }
     const previews = files.map(file => ({
       id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
@@ -406,7 +559,7 @@ export default function Dashboard() {
         metrics: null,
         recentMoods,
         aiMemory: aiMemory || [],
-        userGoal,
+        userGoal: currentGoal?.label || userGoal,
       });
 
       if (advice) {
@@ -553,7 +706,9 @@ export default function Dashboard() {
                     {preview.file?.type.startsWith('video/') ? (
                       <video src={preview.url} muted preload="metadata" />
                     ) : preview.file?.type.startsWith('audio/') ? (
-                      <div className="media-file-preview"><span>{preview.file.name}</span></div>
+                      <div className="media-file-preview">
+                        <span title={preview.file.name}>{displayAttachmentName({ type: preview.file.type, kind: 'audio' }, { date: new Date() })}</span>
+                      </div>
                     ) : (
                       <img src={preview.url} alt={`Tệp check-in xem trước ${index + 1}`} />
                     )}
@@ -805,6 +960,40 @@ export default function Dashboard() {
         )}
       </section>
 
+      <section className="card personal-patterns-card">
+        <div className="section-heading-row">
+          <div>
+            <h3>Pattern cá nhân</h3>
+            <p className="text-muted">MindBuddy nhắc lại những mẫu lặp nhỏ từ check-in, Pomodoro và chỉ số phụ.</p>
+          </div>
+          <Link to="/mood?tab=history" className="quick-link">Xem dữ liệu</Link>
+        </div>
+
+        {personalPatterns.length > 0 ? (
+          <div className="personal-pattern-grid">
+            {personalPatterns.map(pattern => (
+              <Link key={pattern.id} to={pattern.to} className="personal-pattern-item">
+                <span className="pattern-icon" aria-hidden="true">{pattern.icon}</span>
+                <div>
+                  <strong>{pattern.title}</strong>
+                  <p>{pattern.text}</p>
+                  <small>{pattern.evidence}</small>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="personal-pattern-empty">
+            <span aria-hidden="true">🧩</span>
+            <div>
+              <strong>Chưa đủ dữ liệu để nhận ra pattern rõ ràng</strong>
+              <p>Ghi thêm nguyên nhân, stress/ngủ/focus và vài phiên Pomodoro để MindBuddy nhắc lại các mẫu lặp đáng chú ý.</p>
+            </div>
+            <Link to="/mood" className="btn btn-primary">Ghi thêm</Link>
+          </div>
+        )}
+      </section>
+
       <section className="dashboard-focus-grid secondary-dashboard-grid">
         <div className="card mood-chart-card">
           <h3 className="mb-3">Biểu đồ cảm xúc 7 ngày</h3>
@@ -850,7 +1039,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="goal-options">
-            {GOALS.map(goal => (
+            {activeGoals.map(goal => (
               <button
                 key={goal.id}
                 className={`goal-option ${userGoal === goal.id ? 'active' : ''}`}
@@ -908,6 +1097,7 @@ export default function Dashboard() {
                     <MediaAttachments
                       attachments={attachments}
                       label={`Tệp check-in lúc ${format(new Date(log.date), 'HH:mm')}`}
+                      date={log.date}
                       compact
                     />
                     <RichText text={cleanNote} fallback="Không có ghi chú thêm." className="dashboard-note-text" />
@@ -930,6 +1120,7 @@ export default function Dashboard() {
               <MediaAttachments
                 attachments={selectedMemory.attachments?.length ? selectedMemory.attachments : [selectedMemory.attachment]}
                 label={`Tệp check-in lúc ${format(new Date(selectedMemory.date), 'HH:mm')}`}
+                date={selectedMemory.date}
               />
               <div className="memory-detail-note" style={{ '--entry-color': selectedMemory.mood?.color || '#a29bfe' }}>
                 <div className="dashboard-day-entry-head">
