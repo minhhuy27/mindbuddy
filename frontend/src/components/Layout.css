@@ -111,6 +111,125 @@
 }
 .mobile-nav-link.active { background: var(--accent-purple); color: var(--primary); }
 
+.sync-notice {
+  max-width: 1200px;
+  width: calc(100% - 48px);
+  margin: 12px auto 0;
+  border: 1px solid var(--border);
+  border-left: 4px solid #fdcb6e;
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+}
+
+.sync-notice.error {
+  border-left-color: var(--danger);
+}
+
+.sync-notice strong,
+.sync-notice small {
+  display: block;
+}
+
+.sync-notice strong {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.sync-notice small {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.sync-notice button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 10px;
+}
+
+.backup-reminder {
+  max-width: 1200px;
+  width: calc(100% - 48px);
+  margin: 12px auto 0;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+}
+
+.backup-reminder strong,
+.backup-reminder small {
+  display: block;
+}
+
+.backup-reminder strong {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.backup-reminder small {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
+.backup-reminder-error {
+  color: var(--danger) !important;
+  font-weight: 800;
+}
+
+.backup-reminder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
+.backup-reminder-actions button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.backup-reminder-actions button.primary {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: white;
+}
+
+.backup-reminder-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .bottom-nav { display: none; }
 
 .main-content { flex: 1; max-width: 1200px; width: 100%; margin: 0 auto; padding: 24px; }
@@ -124,6 +243,13 @@
   .header-right { gap: 8px; }
   .header-logout { display: none; }
   .main-content { padding: 16px 16px 88px; }
+  .backup-reminder {
+    width: calc(100% - 32px);
+    flex-direction: column;
+  }
+  .backup-reminder-actions {
+    justify-content: flex-start;
+  }
 
   .bottom-nav {
     position: fixed;

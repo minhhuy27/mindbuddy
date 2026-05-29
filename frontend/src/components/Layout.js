@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import './Layout.css';
@@ -24,16 +24,78 @@ const SOS_NAV = { path: '/sos', icon: '🆘', label: 'S.O.S' };
 const MOBILE_NAV = [...PRIMARY_NAV, SOS_NAV];
 const ALL_NAV = [...PRIMARY_NAV, ...MORE_NAV, SOS_NAV];
 
+function getBackupWeekKey(uid) {
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), 0, 1);
+  const dayOffset = Math.floor((now - firstDay) / 86400000);
+  const week = Math.ceil((dayOffset + firstDay.getDay() + 1) / 7);
+  return `mb_backup_reminder_${uid}_${now.getFullYear()}_${week}`;
+}
+
 export default function Layout({ children }) {
-  const { user, logout, darkMode, setDarkMode } = useApp();
+  const { user, logout, darkMode, setDarkMode, syncNotice, clearSyncNotice, getCurrentUserRawData } = useApp();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [backupReminderVisible, setBackupReminderVisible] = useState(false);
+  const [backupDownloading, setBackupDownloading] = useState(false);
+  const [backupReminderError, setBackupReminderError] = useState('');
   const moreActive = MORE_NAV.some(item => item.path === location.pathname);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setBackupReminderVisible(false);
+      return;
+    }
+    const weekKey = getBackupWeekKey(user.uid);
+    const completed = localStorage.getItem(`${weekKey}_done`);
+    const snoozed = sessionStorage.getItem(`${weekKey}_snooze`);
+    setBackupReminderVisible(new Date().getDay() === 0 && !completed && !snoozed);
+  }, [user?.uid]);
 
   const closeMenus = () => {
     setMenuOpen(false);
     setMoreOpen(false);
+  };
+
+  const downloadBackupJson = async () => {
+    if (!user?.uid) return;
+    setBackupDownloading(true);
+    setBackupReminderError('');
+    try {
+      const payload = await getCurrentUserRawData();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const downloadedAt = new Date();
+      const stamp = [
+        downloadedAt.getFullYear(),
+        String(downloadedAt.getMonth() + 1).padStart(2, '0'),
+        String(downloadedAt.getDate()).padStart(2, '0'),
+      ].join('-');
+      link.href = url;
+      link.download = `mindbuddy-backup-${stamp}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      localStorage.setItem(`${getBackupWeekKey(user.uid)}_done`, 'downloaded');
+      setBackupReminderVisible(false);
+    } catch (err) {
+      setBackupReminderError(err.message || 'Không thể tải backup JSON.');
+    } finally {
+      setBackupDownloading(false);
+    }
+  };
+
+  const snoozeBackupReminder = () => {
+    if (user?.uid) sessionStorage.setItem(`${getBackupWeekKey(user.uid)}_snooze`, '1');
+    setBackupReminderVisible(false);
+  };
+
+  const skipBackupReminderThisWeek = () => {
+    if (user?.uid) localStorage.setItem(`${getBackupWeekKey(user.uid)}_done`, 'skipped');
+    setBackupReminderVisible(false);
   };
 
   return (
@@ -131,6 +193,34 @@ export default function Layout({ children }) {
               {item.icon} {item.label}
             </Link>
           ))}
+        </div>
+      )}
+
+      {syncNotice && (
+        <div className={`sync-notice ${syncNotice.type || 'warning'}`} role="status">
+          <div>
+            <strong>{syncNotice.message}</strong>
+            {syncNotice.detail && <small>{syncNotice.detail}</small>}
+            {user?.uid && <small>UID đang đọc: {user.uid}</small>}
+          </div>
+          <button type="button" onClick={clearSyncNotice}>Đóng</button>
+        </div>
+      )}
+
+      {backupReminderVisible && (
+        <div className="backup-reminder" role="status">
+          <div>
+            <strong>Đến lịch tải backup MindBuddy về máy.</strong>
+            <small>Hôm nay là Chủ nhật. Firestore đã có backup tự động hằng ngày, nhưng một file JSON trên máy vẫn là lớp an toàn nhất.</small>
+            {backupReminderError && <small className="backup-reminder-error">{backupReminderError}</small>}
+          </div>
+          <div className="backup-reminder-actions">
+            <button type="button" className="primary" onClick={downloadBackupJson} disabled={backupDownloading}>
+              {backupDownloading ? 'Đang tải...' : 'Tải JSON'}
+            </button>
+            <button type="button" onClick={snoozeBackupReminder}>Để sau</button>
+            <button type="button" onClick={skipBackupReminderThisWeek}>Bỏ qua tuần này</button>
+          </div>
         </div>
       )}
 

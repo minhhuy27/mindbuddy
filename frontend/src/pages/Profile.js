@@ -56,11 +56,19 @@ export default function Profile() {
     user, moodLogs, MOODS, customMoods, userGoal, setUserGoal,
     goalOptions, currentGoal, saveGoalOptions,
     getStreak, pomodoroCount, gardenLevel, earnedBadges, BADGES,
+    importDataFromUid, reloadUserData, inspectCurrentUserData, getCurrentUserRawData, recoverMoodLogsFromReviews,
   } = useApp();
   const [goalEditorOpen, setGoalEditorOpen] = React.useState(false);
   const [editingGoalId, setEditingGoalId] = React.useState('');
   const [goalDraft, setGoalDraft] = React.useState({ icon: '🎯', label: '', desc: '' });
   const [goalError, setGoalError] = React.useState('');
+  const [restoreUid, setRestoreUid] = React.useState('');
+  const [restoreStatus, setRestoreStatus] = React.useState(null);
+  const [restoreLoading, setRestoreLoading] = React.useState(false);
+  const [firestoreCheck, setFirestoreCheck] = React.useState(null);
+  const [firestoreLoading, setFirestoreLoading] = React.useState(false);
+  const [exportingRaw, setExportingRaw] = React.useState(false);
+  const [recoveringReviews, setRecoveringReviews] = React.useState(false);
 
   const allMoods = React.useMemo(
     () => [...MOODS, ...(customMoods || [])],
@@ -240,6 +248,123 @@ export default function Profile() {
     if (editingGoalId === goal.id) resetGoalDraft();
   };
 
+  const restoreFromUid = async () => {
+    setRestoreStatus(null);
+    setRestoreLoading(true);
+    try {
+      const result = await importDataFromUid(restoreUid);
+      setRestoreStatus({
+        type: 'success',
+        message: `Đã gộp dữ liệu từ ${result.sourceUid}. Hiện có ${result.moodLogs} ghi chú cảm xúc trong tài khoản này.`,
+      });
+      setRestoreUid('');
+    } catch (err) {
+      setRestoreStatus({
+        type: 'error',
+        message: err.message || 'Không thể khôi phục dữ liệu từ UID này.',
+      });
+    } finally {
+      setRestoreLoading(false);
+    }
+  };
+
+  const refreshFromFirestore = async () => {
+    setFirestoreLoading(true);
+    setFirestoreCheck(null);
+    try {
+      await reloadUserData();
+      setFirestoreCheck({
+        type: 'success',
+        message: 'Đã tải lại dữ liệu trực tiếp từ Firestore.',
+      });
+    } catch (err) {
+      setFirestoreCheck({
+        type: 'error',
+        message: err.message || 'Không thể tải lại dữ liệu từ Firestore.',
+      });
+    } finally {
+      setFirestoreLoading(false);
+    }
+  };
+
+  const checkFirestoreDocument = async () => {
+    setFirestoreLoading(true);
+    setFirestoreCheck(null);
+    try {
+      const result = await inspectCurrentUserData();
+      if (!result.exists) {
+        setFirestoreCheck({
+          type: 'error',
+          message: `Không tìm thấy document users/${result.uid}.`,
+        });
+        return;
+      }
+      setFirestoreCheck({
+        type: 'success',
+        message: `Firestore đọc được document hiện tại: moodLogs ${result.counts.moodLogs}, aiMemory ${result.counts.aiMemory}, customMoods ${result.counts.customMoods}, dailyReviews ${result.counts.dailyReviews}.`,
+        fields: result.fields,
+      });
+    } catch (err) {
+      setFirestoreCheck({
+        type: 'error',
+        message: err.message || 'Không thể kiểm tra document Firestore.',
+      });
+    } finally {
+      setFirestoreLoading(false);
+    }
+  };
+
+  const downloadRawFirestore = async () => {
+    setExportingRaw(true);
+    setFirestoreCheck(null);
+    try {
+      const payload = await getCurrentUserRawData();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `mindbuddy-backup-${format(new Date(), 'yyyy-MM-dd')}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setFirestoreCheck({
+        type: 'success',
+        message: 'Đã tải toàn bộ document Firestore hiện tại thành file JSON.',
+      });
+    } catch (err) {
+      setFirestoreCheck({
+        type: 'error',
+        message: err.message || 'Không thể tải dữ liệu Firestore.',
+      });
+    } finally {
+      setExportingRaw(false);
+    }
+  };
+
+  const rebuildMoodLogsFromReviews = async () => {
+    const confirmed = window.confirm(
+      'MindBuddy sẽ dựng lại nhật ký từ dữ liệu Nhìn lại ngày còn trong Firestore và gộp vào moodLogs hiện tại. Tiếp tục?'
+    );
+    if (!confirmed) return;
+    setRecoveringReviews(true);
+    setFirestoreCheck(null);
+    try {
+      const result = await recoverMoodLogsFromReviews();
+      setFirestoreCheck({
+        type: 'success',
+        message: `Đã dựng lại ${result.recovered} entry (${result.fromReviews} từ dailyReviews, ${result.fromMemory} từ aiMemory). moodLogs hiện có ${result.total} ghi chú.`,
+      });
+    } catch (err) {
+      setFirestoreCheck({
+        type: 'error',
+        message: err.message || 'Không thể dựng lại nhật ký từ dailyReviews.',
+      });
+    } finally {
+      setRecoveringReviews(false);
+    }
+  };
+
   return (
     <div className="profile-page">
       <section className="profile-hero">
@@ -265,6 +390,66 @@ export default function Profile() {
             <span>mood TB</span>
           </div>
         </div>
+      </section>
+
+      <section className="card profile-restore-card">
+        <div className="profile-card-head">
+          <div>
+            <span>Khôi phục dữ liệu Firestore</span>
+            <h2>Đối chiếu UID tài khoản</h2>
+          </div>
+        </div>
+        <p>
+          App đang đọc document <code>users/{user?.uid}</code>. Nếu dữ liệu cũ nằm ở một document UID khác,
+          hãy nhập UID cũ tại đây để gộp dữ liệu về tài khoản hiện tại.
+        </p>
+        <div className="profile-restore-form">
+          <input
+            value={restoreUid}
+            onChange={e => setRestoreUid(e.target.value)}
+            placeholder="Dán UID cũ từ Firestore, ví dụ OEWALV6Ov..."
+            spellCheck={false}
+          />
+          <button type="button" onClick={restoreFromUid} disabled={restoreLoading || !restoreUid.trim()}>
+            {restoreLoading ? 'Đang gộp...' : 'Gộp dữ liệu'}
+          </button>
+        </div>
+        {restoreStatus && (
+          <p className={`profile-restore-status ${restoreStatus.type}`} role="status">
+            {restoreStatus.message}
+          </p>
+        )}
+        <div className="profile-restore-actions">
+          <button type="button" onClick={checkFirestoreDocument} disabled={firestoreLoading}>
+            {firestoreLoading ? 'Đang kiểm tra...' : 'Kiểm tra document hiện tại'}
+          </button>
+          <button type="button" onClick={refreshFromFirestore} disabled={firestoreLoading}>
+            Tải lại từ Firestore
+          </button>
+          <button type="button" onClick={downloadRawFirestore} disabled={exportingRaw}>
+            {exportingRaw ? 'Đang tải JSON...' : 'Tải JSON Firestore'}
+          </button>
+          <button type="button" onClick={rebuildMoodLogsFromReviews} disabled={recoveringReviews}>
+            {recoveringReviews ? 'Đang dựng lại...' : 'Dựng lại từ dữ liệu còn lại'}
+          </button>
+        </div>
+        {firestoreCheck && (
+          <div className={`profile-restore-status ${firestoreCheck.type}`} role="status">
+            <p>{firestoreCheck.message}</p>
+            {firestoreCheck.fields?.length > 0 && (
+              <details>
+                <summary>Field app đọc được</summary>
+                <ul>
+                  {firestoreCheck.fields.map(field => (
+                    <li key={field.key}>
+                      <code>{field.key}</code> <span>{field.type}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="profile-grid">

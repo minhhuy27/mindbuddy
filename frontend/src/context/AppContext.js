@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { auth, db } from '../firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, arrayUnion, increment } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, arrayUnion, increment, collection, getDocs, deleteDoc } from 'firebase/firestore';
 import { deleteObject, ref as storageRef } from 'firebase/storage';
 import { storage } from '../firebase';
 import { normalizeMoodAttachments, normalizeMoodImages } from '../utils/moodImages';
@@ -52,6 +52,253 @@ const DEFAULT_DATA = {
   ],
 };
 
+const USER_CACHE_PREFIX = 'mb_user_cache_';
+const MAX_FIRESTORE_BACKUPS = 10;
+const BACKUP_COLLECTION = 'userBackups';
+
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function cacheKey(uid) {
+  return `${USER_CACHE_PREFIX}${uid}`;
+}
+
+function readUserCache(uid) {
+  try {
+    const raw = localStorage.getItem(cacheKey(uid));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeUserCache(uid, value) {
+  if (!uid) return;
+  try {
+    localStorage.setItem(cacheKey(uid), JSON.stringify({
+      savedAt: Date.now(),
+      data: value,
+    }));
+  } catch (err) {
+    console.warn('Không thể lưu cache cục bộ:', err.message);
+  }
+}
+
+function normalizeListField(value) {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object') return Object.values(value);
+  return [];
+}
+
+function mergeUserData(value = {}) {
+  return {
+    ...DEFAULT_DATA,
+    ...value,
+    moodLogs: normalizeListField(value.moodLogs),
+    aiMemory: normalizeListField(value.aiMemory),
+    customMoods: normalizeListField(value.customMoods),
+    earnedBadges: normalizeListField(value.earnedBadges),
+    confessions: value.confessions === undefined ? DEFAULT_DATA.confessions : normalizeListField(value.confessions),
+    causeOptions: value.causeOptions === undefined || value.causeOptions === null ? value.causeOptions : normalizeListField(value.causeOptions),
+    goalOptions: value.goalOptions === undefined || value.goalOptions === null ? value.goalOptions : normalizeListField(value.goalOptions),
+  };
+}
+
+function summarizeFirestoreValue(value) {
+  if (Array.isArray(value)) return `array(${value.length})`;
+  if (value && typeof value === 'object') return `object(${Object.keys(value).length})`;
+  return typeof value;
+}
+
+function parseStoredSignature(value) {
+  if (!value || typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function moodIdFromEntry(entry, moods) {
+  const label = String(entry?.moodLabel || '').trim().toLowerCase();
+  const score = Number(entry?.moodScore);
+  const byLabel = moods.find(mood => String(mood.label || '').trim().toLowerCase() === label);
+  if (byLabel) return byLabel.id;
+  const byScore = moods.find(mood => Number(mood.score) === score);
+  return byScore?.id || 3;
+}
+
+function noteWithCauses(note = '', causes = []) {
+  const cleanNote = String(note || '').trim();
+  const cleanCauses = [...new Set((causes || []).map(cause => String(cause).trim()).filter(Boolean))];
+  if (!cleanCauses.length) return cleanNote;
+  return `${cleanNote}${cleanNote ? ' ' : ''}[${cleanCauses.join(', ')}]`;
+}
+
+function buildDateFromReviewEntry(dateKey, time) {
+  const safeTime = /^\d{2}:\d{2}$/.test(String(time || '')) ? time : '12:00';
+  const date = new Date(`${dateKey}T${safeTime}:00`);
+  return Number.isNaN(date.getTime()) ? new Date(`${dateKey}T12:00:00`).toISOString() : date.toISOString();
+}
+
+function dateKeyFromMemoryDate(value) {
+  const text = String(value || '').trim();
+  const vnMatch = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (vnMatch) {
+    const [, day, month, year] = vnMatch;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 10);
+}
+
+function recoverLogsFromDailyReviews(reviews = {}, moods = []) {
+  return Object.entries(reviews || {}).flatMap(([dateKey, stored]) => {
+    const signature = parseStoredSignature(stored?.signature);
+    const entries = Array.isArray(signature?.entries) ? signature.entries : [];
+    return entries.map((entry, index) => {
+      const date = buildDateFromReviewEntry(dateKey, entry.time);
+      const attachments = normalizeMoodAttachments(entry.attachments || []);
+      const images = normalizeMoodImages(attachments);
+      const image = images[0] || null;
+      return {
+        id: `review_${dateKey}_${String(entry.time || index).replace(/\W/g, '')}_${index}`,
+        mood: moodIdFromEntry(entry, moods),
+        note: noteWithCauses(entry.note, entry.causes),
+        metrics: entry.metrics || null,
+        date,
+        attachments,
+        images,
+        image,
+        imageUrl: image?.url || '',
+        imagePath: image?.path || '',
+        recoveredFrom: 'dailyReviews',
+      };
+    });
+  });
+}
+
+function recoverLogsFromAiMemory(memory = [], moods = [], coveredDateKeys = new Set()) {
+  return normalizeListField(memory).flatMap((entry) => {
+    const dateKey = dateKeyFromMemoryDate(entry?.date);
+    if (!dateKey || coveredDateKeys.has(dateKey)) return [];
+    const memoryMoods = normalizeListField(entry?.moods);
+    const summary = String(entry?.summary || '')
+      .replace(/<think>/gi, '')
+      .replace(/<\/think>/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const labels = memoryMoods.length ? memoryMoods : ['Không rõ'];
+
+    return labels.map((label, index) => ({
+      id: `memory_${dateKey}_${index}`,
+      mood: moodIdFromEntry({ moodLabel: label }, moods),
+      note: summary || `Khôi phục gần đúng từ trí nhớ AI: ${label}`,
+      metrics: null,
+      date: buildDateFromReviewEntry(dateKey, `${String(12 + Math.min(index, 6)).padStart(2, '0')}:00`),
+      attachments: [],
+      images: [],
+      image: null,
+      imageUrl: '',
+      imagePath: '',
+      recoveredFrom: 'aiMemory',
+    }));
+  });
+}
+
+function recordKey(item = {}) {
+  const date = new Date(item.date || 0);
+  const datePart = Number.isNaN(date.getTime()) ? String(item.date || '') : date.toISOString().slice(0, 16);
+  return `${datePart}_${String(item.mood || '')}_${String(item.note || '').slice(0, 140)}`;
+}
+
+function mergeRecords(current = [], incoming = []) {
+  const map = new Map();
+  [...incoming, ...current].forEach(item => {
+    if (!item) return;
+    map.set(recordKey(item), item);
+  });
+  return Array.from(map.values()).sort((a, b) => {
+    const aTime = new Date(a?.date || 0).getTime() || 0;
+    const bTime = new Date(b?.date || 0).getTime() || 0;
+    return bTime - aTime;
+  });
+}
+
+function mergeByIdOrLabel(current = [], incoming = []) {
+  const map = new Map();
+  [...incoming, ...current].forEach(item => {
+    if (!item) return;
+    const key = String(item.id || item.label || item.name || JSON.stringify(item)).toLowerCase();
+    map.set(key, item);
+  });
+  return Array.from(map.values());
+}
+
+function mergeStringList(current = [], incoming = []) {
+  return [...new Set([...(incoming || []), ...(current || [])].map(item => String(item).trim()).filter(Boolean))];
+}
+
+function mergeImportedData(currentRaw, incomingRaw) {
+  const current = mergeUserData(currentRaw);
+  const incoming = mergeUserData(incomingRaw);
+  const goalOptions = mergeByIdOrLabel(current.goalOptions || DEFAULT_GOALS, incoming.goalOptions || DEFAULT_GOALS);
+  const userGoal = goalOptions.some(goal => goal.id === current.userGoal)
+    ? current.userGoal
+    : (goalOptions.some(goal => goal.id === incoming.userGoal) ? incoming.userGoal : goalOptions[0]?.id || 'stress');
+
+  return {
+    ...incoming,
+    ...current,
+    moodLogs: mergeRecords(current.moodLogs, incoming.moodLogs),
+    aiMemory: mergeRecords(current.aiMemory, incoming.aiMemory).slice(0, 14),
+    confessions: mergeRecords(current.confessions, incoming.confessions),
+    customMoods: mergeByIdOrLabel(current.customMoods, incoming.customMoods),
+    causeOptions: mergeStringList(current.causeOptions, incoming.causeOptions),
+    goalOptions,
+    userGoal,
+    dailyReviews: { ...(incoming.dailyReviews || {}), ...(current.dailyReviews || {}) },
+    earnedBadges: mergeStringList(current.earnedBadges, incoming.earnedBadges),
+    pomodoroCount: Math.max(Number(current.pomodoroCount || 0), Number(incoming.pomodoroCount || 0)),
+    gardenLevel: Math.max(Number(current.gardenLevel || 0), Number(incoming.gardenLevel || 0)),
+    meditateCount: Math.max(Number(current.meditateCount || 0), Number(incoming.meditateCount || 0)),
+    emergencyContact: current.emergencyContact || incoming.emergencyContact || '',
+    todayAI: current.todayAI || incoming.todayAI || null,
+    weeklyInsight: current.weeklyInsight || incoming.weeklyInsight || null,
+  };
+}
+
+function buildBackupPayload(value = {}) {
+  const normalized = mergeUserData(value);
+  return {
+    moodLogs: normalized.moodLogs || [],
+    dailyReviews: normalized.dailyReviews || {},
+    aiMemory: normalized.aiMemory || [],
+    customMoods: normalized.customMoods || [],
+    causeOptions: normalized.causeOptions || null,
+    goalOptions: normalized.goalOptions || null,
+    userGoal: normalized.userGoal || 'stress',
+    weeklyInsight: normalized.weeklyInsight || null,
+    todayAI: normalized.todayAI || null,
+    pomodoroCount: normalized.pomodoroCount || 0,
+    gardenLevel: normalized.gardenLevel || 0,
+    earnedBadges: normalized.earnedBadges || [],
+    meditateCount: normalized.meditateCount || 0,
+    emergencyContact: normalized.emergencyContact || '',
+    confessions: normalized.confessions || [],
+  };
+}
+
+function backupSignature(value = {}) {
+  return JSON.stringify(buildBackupPayload(value));
+}
+
 function normalizeGoalOptions(goals) {
   const source = Array.isArray(goals) && goals.length ? goals : DEFAULT_GOALS;
   const seen = new Set();
@@ -76,7 +323,13 @@ function normalizeGoalOptions(goals) {
 export function AppProvider({ children }) {
   const [user, setUser] = useState(undefined); // undefined = loading
   const [data, setData] = useState(DEFAULT_DATA);
+  const [dataReady, setDataReady] = useState(false);
+  const [syncNotice, setSyncNotice] = useState(null);
+  const [backupState, setBackupState] = useState({ status: 'idle', lastBackupDate: '', error: '' });
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('mb_dark') === '1');
+  const backupTimerRef = useRef(null);
+  const lastBackupSignatureRef = useRef('');
+  const backupErrorNotifiedRef = useRef(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
@@ -88,10 +341,14 @@ export function AppProvider({ children }) {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
+        setDataReady(false);
+        setSyncNotice(null);
         await loadUserData(firebaseUser.uid);
       } else {
         setUser(null);
         setData(DEFAULT_DATA);
+        setDataReady(false);
+        setSyncNotice(null);
       }
     });
     return unsub;
@@ -103,22 +360,134 @@ export function AppProvider({ children }) {
     try {
       const snap = await getDoc(userRef(uid));
       if (snap.exists()) {
-        setData({ ...DEFAULT_DATA, ...snap.data() });
+        const nextData = mergeUserData(snap.data());
+        setData(nextData);
+        setDataReady(true);
+        writeUserCache(uid, nextData);
       } else {
-        await setDoc(userRef(uid), DEFAULT_DATA);
+        const nextData = mergeUserData(DEFAULT_DATA);
+        await setDoc(userRef(uid), nextData);
+        setData(nextData);
+        setDataReady(true);
+        writeUserCache(uid, nextData);
       }
     } catch (err) {
-      console.warn('Firestore offline, dùng dữ liệu cục bộ:', err.message);
+      console.warn('Firestore load failed:', err.message);
+      const cached = readUserCache(uid);
+      if (cached?.data) {
+        setData(mergeUserData(cached.data));
+        setDataReady(true);
+        setSyncNotice({
+          type: 'warning',
+          message: 'Không tải được Firestore, MindBuddy đang dùng bản cache cục bộ gần nhất.',
+          detail: err.message,
+        });
+      } else {
+        setData(DEFAULT_DATA);
+        setDataReady(true);
+        setSyncNotice({
+          type: 'error',
+          message: 'Không tải được dữ liệu Firestore và chưa có cache cục bộ trên máy này.',
+          detail: err.message,
+        });
+      }
     }
   };
 
   const save = async (updates) => {
-    setData(prev => ({ ...prev, ...updates }));
+    const nextData = { ...data, ...updates };
+    setData(nextData);
+    if (user?.uid) writeUserCache(user.uid, nextData);
     if (user) {
-      try { await updateDoc(userRef(user.uid), updates); }
-      catch (err) { console.warn('Lưu thất bại:', err.message); }
+      try {
+        await setDoc(userRef(user.uid), updates, { merge: true });
+        setSyncNotice(null);
+      }
+      catch (err) {
+        console.warn('Lưu thất bại:', err.message);
+        setSyncNotice({
+          type: 'warning',
+          message: 'Thay đổi đã được giữ tạm trên máy này nhưng chưa đồng bộ được lên Firestore.',
+          detail: err.message,
+        });
+      }
     }
   };
+
+  const backupRef = (uid, dateKey) => doc(db, BACKUP_COLLECTION, uid, 'snapshots', dateKey);
+  const backupsCollectionRef = (uid) => collection(db, BACKUP_COLLECTION, uid, 'snapshots');
+
+  const pruneOldBackups = async (uid) => {
+    const snap = await getDocs(backupsCollectionRef(uid));
+    const backups = snap.docs
+      .map(item => ({
+        id: item.id,
+        ref: item.ref,
+        createdAt: item.data()?.createdAt || item.id,
+      }))
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+
+    const oldBackups = backups.slice(MAX_FIRESTORE_BACKUPS);
+    if (oldBackups.length) {
+      await Promise.all(oldBackups.map(item => deleteDoc(item.ref)));
+    }
+  };
+
+  const createFirestoreBackup = async (snapshotData = data, source = 'auto-daily') => {
+    if (!user?.uid) throw new Error('Bạn cần đăng nhập trước khi backup.');
+    const dateKey = localDateKey();
+    const payload = buildBackupPayload(snapshotData);
+    const createdAt = new Date().toISOString();
+    await setDoc(backupRef(user.uid, dateKey), {
+      uid: user.uid,
+      dateKey,
+      createdAt,
+      source,
+      schemaVersion: 1,
+      app: 'MindBuddy',
+      counts: {
+        moodLogs: payload.moodLogs.length,
+        dailyReviews: Object.keys(payload.dailyReviews || {}).length,
+        aiMemory: payload.aiMemory.length,
+        customMoods: payload.customMoods.length,
+      },
+      data: payload,
+    });
+    await pruneOldBackups(user.uid);
+    setBackupState({ status: 'ok', lastBackupDate: dateKey, error: '' });
+    backupErrorNotifiedRef.current = false;
+    return { dateKey, createdAt };
+  };
+
+  useEffect(() => {
+    if (!user?.uid || !dataReady) return undefined;
+    const dateKey = localDateKey();
+    const signature = `${dateKey}:${backupSignature(data)}`;
+    if (lastBackupSignatureRef.current === signature) return undefined;
+
+    if (backupTimerRef.current) clearTimeout(backupTimerRef.current);
+    backupTimerRef.current = setTimeout(async () => {
+      try {
+        await createFirestoreBackup(data, 'auto-daily');
+        lastBackupSignatureRef.current = signature;
+      } catch (err) {
+        console.warn('Firestore backup failed:', err.message);
+        setBackupState({ status: 'error', lastBackupDate: '', error: err.message });
+        if (!backupErrorNotifiedRef.current) {
+          backupErrorNotifiedRef.current = true;
+          setSyncNotice({
+            type: 'warning',
+            message: 'Backup Firestore tự động chưa chạy được.',
+            detail: err.message,
+          });
+        }
+      }
+    }, 2500);
+
+    return () => {
+      if (backupTimerRef.current) clearTimeout(backupTimerRef.current);
+    };
+  }, [user?.uid, dataReady, data]);
 
   const logout = () => signOut(auth);
 
@@ -179,7 +548,8 @@ export function AppProvider({ children }) {
     const log = { id: Date.now(), mood, note, metrics, ...formatImageFields(images), date: new Date().toISOString() };
     const next = [log, ...data.moodLogs];
     setData(prev => ({ ...prev, moodLogs: next }));
-    if (user) await updateDoc(userRef(user.uid), { moodLogs: next });
+    if (user?.uid) writeUserCache(user.uid, { ...data, moodLogs: next });
+    if (user) await setDoc(userRef(user.uid), { moodLogs: next }, { merge: true });
     // Chỉ cộng điểm vườn cho lần đầu ghi trong ngày
     const todayStr = new Date().toDateString();
     const alreadyToday = data.moodLogs.some(l => new Date(l.date).toDateString() === todayStr);
@@ -206,7 +576,8 @@ export function AppProvider({ children }) {
       return { ...base, ...formatImageFields(nextAttachments) };
     });
     setData(prev => ({ ...prev, moodLogs: next }));
-    if (user) await updateDoc(userRef(user.uid), { moodLogs: next });
+    if (user?.uid) writeUserCache(user.uid, { ...data, moodLogs: next });
+    if (user) await setDoc(userRef(user.uid), { moodLogs: next }, { merge: true });
     if (images === undefined) return;
     const nextPaths = new Set(nextAttachments.map(attachment => attachment.path).filter(Boolean));
     currentAttachments.forEach(attachment => {
@@ -219,7 +590,8 @@ export function AppProvider({ children }) {
     const current = data.moodLogs.find(l => l.id === id);
     const next = data.moodLogs.filter(l => l.id !== id);
     setData(prev => ({ ...prev, moodLogs: next }));
-    if (user) await updateDoc(userRef(user.uid), { moodLogs: next });
+    if (user?.uid) writeUserCache(user.uid, { ...data, moodLogs: next });
+    if (user) await setDoc(userRef(user.uid), { moodLogs: next }, { merge: true });
     normalizeMoodAttachments(current).forEach(attachment => {
       if (attachment.path) deleteMoodImage(attachment.path);
     });
@@ -282,6 +654,112 @@ export function AppProvider({ children }) {
     await save({ causeOptions: normalized });
   };
 
+  const importDataFromUid = async (sourceUid) => {
+    const uid = String(sourceUid || '').trim();
+    if (!user?.uid) throw new Error('Bạn cần đăng nhập trước khi khôi phục dữ liệu.');
+    if (!uid) throw new Error('Hãy nhập UID cũ trong Firestore.');
+    if (uid === user.uid) throw new Error('UID này đang là tài khoản hiện tại.');
+
+    const snap = await getDoc(userRef(uid));
+    if (!snap.exists()) {
+      throw new Error(`Không tìm thấy document users/${uid}.`);
+    }
+
+    const imported = mergeImportedData(data, snap.data());
+    setData(imported);
+    writeUserCache(user.uid, imported);
+    await setDoc(userRef(user.uid), imported, { merge: true });
+    setSyncNotice(null);
+    return {
+      moodLogs: imported.moodLogs?.length || 0,
+      sourceUid: uid,
+      targetUid: user.uid,
+    };
+  };
+
+  const reloadUserData = async () => {
+    if (!user?.uid) return;
+    await loadUserData(user.uid);
+  };
+
+  const inspectCurrentUserData = async () => {
+    if (!user?.uid) throw new Error('Bạn cần đăng nhập trước khi kiểm tra Firestore.');
+    const snap = await getDoc(userRef(user.uid));
+    if (!snap.exists()) {
+      return {
+        exists: false,
+        uid: user.uid,
+        fields: [],
+        counts: {},
+      };
+    }
+    const raw = snap.data();
+    return {
+      exists: true,
+      uid: user.uid,
+      fields: Object.keys(raw).sort().map(key => ({
+        key,
+        type: summarizeFirestoreValue(raw[key]),
+      })),
+      counts: {
+        moodLogs: normalizeListField(raw.moodLogs).length,
+        aiMemory: normalizeListField(raw.aiMemory).length,
+        customMoods: normalizeListField(raw.customMoods).length,
+        dailyReviews: raw.dailyReviews && typeof raw.dailyReviews === 'object' ? Object.keys(raw.dailyReviews).length : 0,
+      },
+    };
+  };
+
+  const getCurrentUserRawData = async () => {
+    if (!user?.uid) throw new Error('Bạn cần đăng nhập trước khi tải dữ liệu Firestore.');
+    const snap = await getDoc(userRef(user.uid));
+    if (!snap.exists()) throw new Error(`Không tìm thấy document users/${user.uid}.`);
+    const raw = snap.data();
+    return {
+      exportedAt: new Date().toISOString(),
+      uid: user.uid,
+      path: `users/${user.uid}`,
+      fieldSummary: Object.keys(raw).sort().reduce((acc, key) => {
+        acc[key] = summarizeFirestoreValue(raw[key]);
+        return acc;
+      }, {}),
+      data: raw,
+    };
+  };
+
+  const recoverMoodLogsFromReviews = async () => {
+    if (!user?.uid) throw new Error('Bạn cần đăng nhập trước khi khôi phục nhật ký.');
+    const snap = await getDoc(userRef(user.uid));
+    if (!snap.exists()) throw new Error(`Không tìm thấy document users/${user.uid}.`);
+
+    const raw = snap.data();
+    const allMoods = [...MOODS, ...normalizeListField(raw.customMoods)];
+    const fromReviews = recoverLogsFromDailyReviews(raw.dailyReviews, allMoods);
+    const coveredDateKeys = new Set([
+      ...normalizeListField(raw.moodLogs).map(log => dateKeyFromMemoryDate(log?.date)),
+      ...fromReviews.map(log => dateKeyFromMemoryDate(log?.date)),
+    ].filter(Boolean));
+    const fromMemory = recoverLogsFromAiMemory(raw.aiMemory, allMoods, coveredDateKeys);
+    const recovered = [...fromReviews, ...fromMemory];
+    if (!recovered.length) {
+      throw new Error('Không tìm thấy entry check-in nào trong dailyReviews hoặc aiMemory để dựng lại.');
+    }
+
+    const current = mergeUserData(raw);
+    const nextLogs = mergeRecords(current.moodLogs, recovered);
+    const nextData = { ...current, moodLogs: nextLogs };
+    setData(nextData);
+    writeUserCache(user.uid, nextData);
+    await setDoc(userRef(user.uid), { moodLogs: nextLogs }, { merge: true });
+    setSyncNotice(null);
+    return {
+      recovered: recovered.length,
+      fromReviews: fromReviews.length,
+      fromMemory: fromMemory.length,
+      total: nextLogs.length,
+    };
+  };
+
   const goalOptions = normalizeGoalOptions(data.goalOptions);
   const currentGoal = goalOptions.find(goal => goal.id === data.userGoal) || goalOptions[0] || DEFAULT_GOALS[0];
 
@@ -317,9 +795,18 @@ export function AppProvider({ children }) {
       addConfession, hugConfession,
       addCustomMood, deleteCustomMood,
       saveCauseOptions,
+      importDataFromUid,
+      reloadUserData,
+      inspectCurrentUserData,
+      getCurrentUserRawData,
+      recoverMoodLogsFromReviews,
+      backupState,
+      createFirestoreBackup,
       goalOptions,
       currentGoal,
       saveGoalOptions,
+      syncNotice,
+      clearSyncNotice: () => setSyncNotice(null),
       growGarden,
       setEmergencyContact: (v) => save({ emergencyContact: v }),
       setUserGoal: (v) => save({ userGoal: v, weeklyInsight: null, todayAI: null }),
