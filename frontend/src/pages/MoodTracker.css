@@ -1090,11 +1090,31 @@
 }
 
 .checkin-photo-field {
+  position: relative;
   margin-top: 12px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg);
   padding: 12px;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.checkin-photo-field.drop-active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--bg));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.media-drop-overlay {
+  position: absolute;
+  inset: 10px;
+  z-index: 3;
+  border: 2px dashed var(--primary);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  color: var(--primary);
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  pointer-events: none;
 }
 .photo-field-head {
   display: flex;

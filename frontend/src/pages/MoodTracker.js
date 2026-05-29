@@ -360,6 +360,7 @@ export default function MoodTracker() {
   const [existingImages, setExistingImages] = useState([]);
   const [removeExistingImage, setRemoveExistingImage] = useState(false);
   const [imageError, setImageError] = useState('');
+  const [mediaDropActive, setMediaDropActive] = useState(false);
   const [photoLightbox, setPhotoLightbox] = useState(null);
   const [recordingState, setRecordingState] = useState('idle');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -370,6 +371,7 @@ export default function MoodTracker() {
   const recordingStreamRef = React.useRef(null);
   const recordingChunksRef = React.useRef([]);
   const recordingTimerRef = React.useRef(null);
+  const mediaDropDepthRef = React.useRef(0);
 
   // ── Custom mood modal ──
   const [showModal, setShowModal] = useState(false);
@@ -673,6 +675,8 @@ export default function MoodTracker() {
     setExistingImages([]);
     setRemoveExistingImage(false);
     setImageError('');
+    setMediaDropActive(false);
+    mediaDropDepthRef.current = 0;
     if (imageInputRef.current) imageInputRef.current.value = '';
   };
 
@@ -733,6 +737,65 @@ export default function MoodTracker() {
     setImagePreviews(prev => [...prev, ...previews]);
     setRemoveExistingImage(false);
     if (imageInputRef.current) imageInputRef.current.value = '';
+  };
+
+  const extractMediaFiles = (source) => {
+    const itemFiles = Array.from(source?.items || [])
+      .filter(item => item.kind === 'file')
+      .map(item => item.getAsFile())
+      .filter(Boolean);
+    const directFiles = Array.from(source?.files || []);
+    return [...itemFiles, ...directFiles].filter((file, index, files) => (
+      files.findIndex(item => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified) === index
+    ));
+  };
+
+  const hasMediaItems = (source) => (
+    Array.from(source?.items || []).some(item => item.kind === 'file') ||
+    Array.from(source?.files || []).length > 0
+  );
+
+  const addMediaFilesFromExternalSource = (files) => {
+    if (recordingState !== 'idle') {
+      setImageError('Vui lòng dừng ghi âm trước khi thêm tệp khác.');
+      return;
+    }
+    handleImageSelect({ target: { files } });
+  };
+
+  const handleMediaDragEnter = (event) => {
+    if (!hasMediaItems(event.dataTransfer)) return;
+    event.preventDefault();
+    mediaDropDepthRef.current += 1;
+    setMediaDropActive(true);
+  };
+
+  const handleMediaDragOver = (event) => {
+    if (!hasMediaItems(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = recordingState === 'idle' ? 'copy' : 'none';
+    setMediaDropActive(true);
+  };
+
+  const handleMediaDragLeave = (event) => {
+    event.preventDefault();
+    mediaDropDepthRef.current = Math.max(0, mediaDropDepthRef.current - 1);
+    if (mediaDropDepthRef.current === 0) setMediaDropActive(false);
+  };
+
+  const handleMediaDrop = (event) => {
+    if (!hasMediaItems(event.dataTransfer)) return;
+    event.preventDefault();
+    mediaDropDepthRef.current = 0;
+    setMediaDropActive(false);
+    addMediaFilesFromExternalSource(extractMediaFiles(event.dataTransfer));
+  };
+
+  const handleMediaPaste = (event) => {
+    const files = extractMediaFiles(event.clipboardData);
+    if (!files.length) return;
+    event.preventDefault();
+    addMediaFilesFromExternalSource(files);
   };
 
   const removeSelectedImage = (index) => {
@@ -1476,7 +1539,7 @@ export default function MoodTracker() {
                     ))}
                   </div>
                 </div>
-                <div className="mt-3">
+                <div className="mt-3" onPaste={handleMediaPaste}>
                   <div className="note-label-row">
                     <label className="form-label" htmlFor="mood-note-input">Ghi chú thêm</label>
                     <button
@@ -1542,11 +1605,17 @@ export default function MoodTracker() {
                       <RichText text={note} className="note-preview-content" />
                     </div>
                   )}
-                  <div className="checkin-photo-field">
+                  <div
+                    className={`checkin-photo-field ${mediaDropActive ? 'drop-active' : ''}`}
+                    onDragEnter={handleMediaDragEnter}
+                    onDragOver={handleMediaDragOver}
+                    onDragLeave={handleMediaDragLeave}
+                    onDrop={handleMediaDrop}
+                  >
                     <div className="photo-field-head">
                       <div>
                         <strong>Tệp check-in</strong>
-                        <span>Thêm ảnh, video hoặc âm thanh để sau này nhớ ngữ cảnh hơn.</span>
+                        <span>Thêm ảnh, video hoặc âm thanh để sau này nhớ ngữ cảnh hơn. Có thể kéo thả hoặc dán tệp vào đây.</span>
                       </div>
                       <button type="button" className="btn-photo-select" onClick={() => imageInputRef.current?.click()} disabled={recordingState !== 'idle'}>
                         📎 Chọn tệp
@@ -1581,6 +1650,11 @@ export default function MoodTracker() {
                       onChange={handleImageSelect}
                       hidden
                     />
+                    {mediaDropActive && (
+                      <div className="media-drop-overlay" aria-hidden="true">
+                        Thả tệp vào đây
+                      </div>
+                    )}
                     {(existingImages.length > 0 || imagePreviews.length > 0) && (
                       <div className="checkin-photo-grid">
                         {existingImages.map((image, index) => (
