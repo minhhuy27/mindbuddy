@@ -31,6 +31,16 @@ const DEFAULT_METRICS = {
 
 const VALID_TABS = ['today', 'history', 'insight', 'export'];
 const AUDIO_RECORDING_LIMIT = 10 * 60;
+const HISTORY_RANGE_OPTIONS = [
+  { value: 7, label: '7 ngày' },
+  { value: 14, label: '14 ngày' },
+  { value: 30, label: '30 ngày' },
+  { value: 'all', label: 'Tất cả' },
+];
+
+function historyRangeLabel(range) {
+  return range === 'all' ? 'toàn bộ' : `${range} ngày`;
+}
 
 function normalizeTab(tab) {
   return VALID_TABS.includes(tab) ? tab : 'today';
@@ -1189,6 +1199,7 @@ export default function MoodTracker() {
   const historyFilteredAllLogs = moodLogs.filter(matchesHistoryFilters);
 
   const filteredMoodLogs = (() => {
+    if (historyRange === 'all') return historyFilteredAllLogs;
     const cutoff = subDays(new Date(), historyRange - 1);
     cutoff.setHours(0, 0, 0, 0);
     return historyFilteredAllLogs.filter(l => new Date(l.date) >= cutoff);
@@ -1203,7 +1214,8 @@ export default function MoodTracker() {
       const key = new Date(l.date).toDateString();
       if (!seen.has(key)) { seen.add(key); unique.push(l); }
     });
-    return unique.slice(0, historyRange).reverse().map(l => ({
+    const chartLogs = historyRange === 'all' ? unique : unique.slice(0, historyRange);
+    return chartLogs.reverse().map(l => ({
       date: format(new Date(l.date), 'dd/MM', { locale: vi }),
       score: allMoods.find(m => m.id === l.mood)?.score ?? 0,
       color: allMoods.find(m => m.id === l.mood)?.color || '#ccc',
@@ -1770,13 +1782,13 @@ export default function MoodTracker() {
               <p className="text-muted">Xem nhanh theo khoảng thời gian và mở từng ngày để xem chi tiết.</p>
             </div>
             <div className="history-filters" role="tablist" aria-label="Lọc lịch sử cảm xúc">
-              {[7, 14, 30].map(days => (
+              {HISTORY_RANGE_OPTIONS.map(option => (
                 <button
-                  key={days}
-                  className={`history-filter-btn ${historyRange === days ? 'active' : ''}`}
-                  onClick={() => setHistoryRange(days)}
+                  key={option.value}
+                  className={`history-filter-btn ${historyRange === option.value ? 'active' : ''}`}
+                  onClick={() => setHistoryRange(option.value)}
                 >
-                  {days} ngày
+                  {option.label}
                 </button>
               ))}
             </div>
@@ -1788,7 +1800,7 @@ export default function MoodTracker() {
                 <h3>Bộ lọc lịch sử</h3>
                 <p className="text-muted">
                   Đang hiển thị {filteredMoodLogs.length}/{moodLogs.length} ghi chú
-                  {hasAdvancedHistoryFilters ? ' theo bộ lọc hiện tại.' : ' trong khoảng đã chọn.'}
+                  {hasAdvancedHistoryFilters ? ' theo bộ lọc hiện tại.' : historyRange === 'all' ? ' trong toàn bộ lịch sử.' : ' trong khoảng đã chọn.'}
                 </p>
               </div>
               {hasAdvancedHistoryFilters && (
@@ -1956,7 +1968,7 @@ export default function MoodTracker() {
 
           {chartData.length > 0 ? (
             <div className="card mb-4">
-              <h3 className="mb-3">📊 Biểu đồ cảm xúc {historyRange} ngày</h3>
+              <h3 className="mb-3">📊 Biểu đồ cảm xúc {historyRangeLabel(historyRange)}</h3>
               <ResponsiveContainer width="100%" height={160}>
                 <BarChart data={chartData} barSize={20}>
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} />
@@ -1975,7 +1987,7 @@ export default function MoodTracker() {
             <div className="card mb-4">
               <div className="empty-timeline chart-empty">
                 <div style={{ fontSize: 36 }} aria-hidden="true">📊</div>
-                <p>Chưa có biểu đồ cho {historyRange} ngày gần đây.</p>
+                <p>Chưa có biểu đồ cho {historyRangeLabel(historyRange)}.</p>
                 <Link to="/mood" className="btn btn-primary">Ghi cảm xúc đầu tiên</Link>
               </div>
             </div>
@@ -2099,7 +2111,9 @@ export default function MoodTracker() {
                     <p>
                       {hasAdvancedHistoryFilters
                         ? 'Không có ghi chú nào khớp với bộ lọc hiện tại.'
-                        : `Không có ghi chú trong ${historyRange} ngày gần đây.`}
+                        : historyRange === 'all'
+                          ? 'Không có ghi chú nào trong toàn bộ lịch sử.'
+                          : `Không có ghi chú trong ${historyRange} ngày gần đây.`}
                     </p>
                   </div>
                 )}

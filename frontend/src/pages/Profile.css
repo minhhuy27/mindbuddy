@@ -125,6 +125,110 @@
   line-height: 1.55;
 }
 
+.profile-restore-card {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-restore-card p {
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.profile-restore-card code {
+  color: var(--primary);
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.profile-restore-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.profile-restore-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.profile-restore-form input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  padding: 11px 12px;
+}
+
+.profile-restore-form button,
+.profile-restore-actions button {
+  border: 1px solid var(--primary);
+  border-radius: 12px;
+  background: var(--primary);
+  color: white;
+  cursor: pointer;
+  font-weight: 900;
+  padding: 0 16px;
+}
+
+.profile-restore-actions button {
+  min-height: 38px;
+  background: var(--bg);
+  color: var(--primary);
+}
+
+.profile-restore-form button:disabled,
+.profile-restore-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.profile-restore-status {
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 10px 12px;
+}
+
+.profile-restore-status p {
+  margin: 0;
+}
+
+.profile-restore-status details {
+  margin-top: 8px;
+}
+
+.profile-restore-status summary {
+  cursor: pointer;
+}
+
+.profile-restore-status ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.profile-restore-status li {
+  margin: 3px 0;
+}
+
+.profile-restore-status span {
+  color: var(--text-muted);
+}
+
+.profile-restore-status.success {
+  background: rgba(85, 239, 196, 0.12);
+  color: #00b894;
+}
+
+.profile-restore-status.error {
+  background: rgba(225, 112, 85, 0.12);
+  color: var(--danger);
+}
+
 .profile-goal-options {
   margin-top: 16px;
   display: grid;
@@ -420,8 +524,14 @@
 
   .profile-hero-stats,
   .profile-goal-options,
+  .profile-restore-form,
   .profile-metric-grid {
     grid-template-columns: 1fr;
+  }
+
+  .profile-restore-form button,
+  .profile-restore-actions button {
+    min-height: 44px;
   }
 
   .profile-goal-icon-picker {

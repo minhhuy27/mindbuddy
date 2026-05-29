@@ -18,6 +18,12 @@ frontend/.env.local
 *.log
 npm-debug.log*
 
+# Local Firestore/debug exports
+firestore-*.json
+mindbuddy-firestore-*.json
+mindbuddy-backup-*.json
+tools/
+
 # OS
 .DS_Store
 Thumbs.db
