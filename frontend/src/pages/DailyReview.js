@@ -331,10 +331,12 @@ export default function DailyReview() {
         causes: extractCauses(log.note || ''),
         metrics: normalizeMetrics(log.metrics),
         attachments: normalizeMoodAttachments(log),
+        excludeFromAI: !!log.excludeFromAI,
       };
     })
   ), [dayLogs, allMoods]);
 
+  const aiEntries = React.useMemo(() => entries.filter(entry => !entry.excludeFromAI), [entries]);
   const signature = React.useMemo(() => buildSignature(entries, dayPomodoros), [entries, dayPomodoros]);
   const cached = dailyReviews?.[selectedDateKey];
   const hasFreshCache = cached?.signature === signature;
@@ -344,6 +346,7 @@ export default function DailyReview() {
     [cached, hasFreshCache, localReview]
   );
   const hasData = entries.length > 0 || dayPomodoros.length > 0;
+  const hasAiData = aiEntries.length > 0 || dayPomodoros.length > 0;
 
   const averages = React.useMemo(() => (
     METRIC_FIELDS.map(field => ({
@@ -435,12 +438,12 @@ export default function DailyReview() {
   }, [entries]);
 
   const generateAiReview = React.useCallback(async (manual = false) => {
-    if (!hasData || loading) return;
+    if (!hasAiData || loading) return;
     setLoading(true);
     setNotice(manual ? 'Đang tạo lại bản nhìn ngày bằng AI...' : '');
     const aiReview = await reviewDay({
       date: format(selectedDate, 'dd/MM/yyyy'),
-      entries,
+      entries: aiEntries,
       pomodoros: dayPomodoros,
       userGoal: currentGoal?.label || userGoal,
     });
@@ -457,15 +460,15 @@ export default function DailyReview() {
       setNotice('AI chưa phản hồi được, MindBuddy đang dùng bản tóm tắt nhanh từ dữ liệu của bạn.');
     }
     setLoading(false);
-  }, [dayPomodoros, entries, hasData, loading, localReview, saveDailyReview, selectedDate, selectedDateKey, signature, userGoal, currentGoal?.label]);
+  }, [aiEntries, dayPomodoros, hasAiData, loading, localReview, saveDailyReview, selectedDate, selectedDateKey, signature, userGoal, currentGoal?.label]);
 
   React.useEffect(() => {
-    if (!hasData || hasFreshCache) return;
+    if (!hasAiData || hasFreshCache) return;
     const key = `${selectedDateKey}|${signature}`;
     if (attemptedKey === key) return;
     setAttemptedKey(key);
     generateAiReview(false);
-  }, [attemptedKey, generateAiReview, hasData, hasFreshCache, selectedDateKey, signature]);
+  }, [attemptedKey, generateAiReview, hasAiData, hasFreshCache, selectedDateKey, signature]);
 
   return (
     <div className="daily-review-page">

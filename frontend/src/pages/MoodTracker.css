@@ -847,6 +847,59 @@
   color: var(--text);
 }
 
+.ai-privacy-toggle {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.ai-privacy-toggle:hover,
+.ai-privacy-toggle.active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--bg));
+}
+.ai-privacy-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+}
+.ai-privacy-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: var(--accent-purple);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+.ai-privacy-toggle strong,
+.ai-privacy-toggle small {
+  display: block;
+}
+.ai-privacy-toggle small {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.ai-private-badge {
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 900;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
 /* ── AI ── */
 .ai-loading { color: var(--text-muted); font-size: 14px; padding: 8px 0; }
 .ai-status {

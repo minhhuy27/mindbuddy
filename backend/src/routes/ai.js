@@ -32,6 +32,25 @@ const DAILY_REVIEW_FALLBACK = {
   tomorrowStep: 'Ngày mai hãy thử ghi một check-in ngắn và chọn một việc nhỏ dễ bắt đầu.',
 };
 
+const COUNSELING_MODES = {
+  listen: {
+    label: 'Lắng nghe',
+    instruction: 'Phản hồi như một người đồng hành đang lắng nghe: phản chiếu cảm xúc, gọi tên điều người dùng đang chịu, hỏi tối đa 1 câu nhẹ.',
+  },
+  reframe: {
+    label: 'Gỡ rối suy nghĩ',
+    instruction: 'Giúp người dùng tách sự kiện, suy nghĩ, cảm xúc và một cách nhìn cân bằng hơn. Không tranh luận gay gắt, không phủ nhận cảm xúc.',
+  },
+  plan: {
+    label: 'Kế hoạch 24h',
+    instruction: 'Đề xuất một kế hoạch 24 giờ rất nhỏ, có 2-3 bước cụ thể, ưu tiên ăn ngủ, nghỉ, học/làm nhẹ và nhờ hỗ trợ khi cần.',
+  },
+  prepare: {
+    label: 'Nói với người thật',
+    instruction: 'Giúp người dùng chuẩn bị nói chuyện với bạn bè, gia đình, cố vấn hoặc chuyên gia: đưa câu mở lời ngắn và điều nên nói rõ.',
+  },
+};
+
 function stripAiNoise(text) {
   return String(text || '')
     .replace(/```json/gi, '')
@@ -130,6 +149,37 @@ function buildMemoryBlock(aiMemory) {
     })
     .join('\n');
   return `\n\n=== LỊCH SỬ CẢM XÚC GẦN ĐÂY CỦA NGƯỜI DÙNG ===\n${lines}\n(Hãy tham chiếu lịch sử này khi phù hợp để phản hồi có chiều sâu hơn.)`;
+}
+
+function normalizeCounselingHistory(history) {
+  if (!Array.isArray(history)) return [];
+  const normalized = history
+    .slice(-8)
+    .map(message => ({
+      role: message.role === 'ai' || message.role === 'assistant' ? 'assistant' : 'user',
+      content: String(message.text || message.content || '').slice(0, 900),
+    }))
+    .filter(message => message.content.trim());
+  while (normalized[0]?.role === 'assistant') normalized.shift();
+  return normalized.filter((message, index) => index === 0 || message.role !== normalized[index - 1].role);
+}
+
+function buildCounselingContextBlock(journalContext) {
+  if (!Array.isArray(journalContext) || journalContext.length === 0) {
+    return 'Người dùng không bật ngữ cảnh nhật ký.';
+  }
+
+  return journalContext
+    .slice(0, 6)
+    .map((entry, index) => {
+      const metrics = formatMetrics(entry.metrics);
+      const causes = Array.isArray(entry.causes) && entry.causes.length
+        ? `; nguyên nhân: ${entry.causes.join(', ')}`
+        : '';
+      const note = entry.note ? `; ghi chú: "${String(entry.note).slice(0, 260)}"` : '';
+      return `${index + 1}. ${entry.date || ''} ${entry.time || ''}: ${entry.moodLabel || 'không rõ'}; chỉ số: ${metrics}${causes}${note}`;
+    })
+    .join('\n');
 }
 
 // POST /api/ai/analyze — phân tích cảm xúc sau check-in
@@ -243,6 +293,64 @@ router.post('/chat', async (req, res) => {
     res.json({ content: text, provider });
   } catch (err) {
     console.error('AI chat error:', err.message);
+    res.status(500).json({ error: 'AI service error' });
+  }
+});
+
+// POST /api/ai/counsel — phản hồi tư vấn tự hỗ trợ có giới hạn an toàn
+router.post('/counsel', async (req, res) => {
+  const {
+    mode = 'listen',
+    distressLevel = 3,
+    message,
+    history = [],
+    journalContext = [],
+    userGoal,
+  } = req.body;
+
+  const trimmedMessage = String(message || '').trim();
+  if (!trimmedMessage) return res.status(400).json({ error: 'message is required' });
+
+  const selectedMode = COUNSELING_MODES[mode] || COUNSELING_MODES.listen;
+  const safeDistressLevel = Math.max(1, Math.min(5, Number(distressLevel) || 3));
+  const contextBlock = buildCounselingContextBlock(journalContext);
+  const normalizedHistory = normalizeCounselingHistory(history);
+
+  try {
+    const { text, provider } = await chatGemini([
+      {
+        role: 'system',
+        content: `Bạn là MindBuddy trong mục Tư vấn tâm lý tự hỗ trợ. Bạn không phải bác sĩ, nhà trị liệu hay dịch vụ khẩn cấp.
+Mục tiêu: giúp người dùng bình tĩnh hơn, hiểu tình huống hơn và chọn một bước nhỏ tiếp theo.
+Ranh giới bắt buộc:
+- Không chẩn đoán bệnh, không kê thuốc, không khẳng định người dùng mắc rối loạn.
+- Không đưa lời khuyên nguy hiểm, không khuyến khích quyết định lớn khi đang kích động.
+- Nếu người dùng nói muốn tự tử, tự làm hại bản thân, làm hại người khác hoặc đang không an toàn: ưu tiên bảo đảm an toàn ngay, khuyên mở S.O.S trong app, gọi người tin cậy, gọi cấp cứu địa phương hoặc 988 nếu ở Mỹ. Không tiếp tục phân tích dài.
+- Tôn trọng riêng tư: chỉ dùng ngữ cảnh nhật ký được cung cấp, không suy đoán quá mức.
+Phong cách: tiếng Việt, ấm, rõ, thực tế, tối đa 180 từ. Không Markdown phức tạp. Không viết quá trình suy nghĩ.`,
+      },
+      ...normalizedHistory,
+      {
+        role: 'user',
+        content: `Chế độ tư vấn: ${selectedMode.label}
+Hướng phản hồi: ${selectedMode.instruction}
+Mức khó chịu hiện tại: ${safeDistressLevel}/5
+Mục tiêu hiện tại: ${userGoal || 'không rõ'}
+
+Ngữ cảnh nhật ký gần đây được phép dùng:
+${contextBlock}
+
+Tin nhắn hiện tại của người dùng:
+"${trimmedMessage}"
+
+Hãy trả lời theo cấu trúc tự nhiên gồm: ghi nhận cảm xúc, một góc nhìn hoặc câu hỏi nhẹ phù hợp chế độ, và một bước nhỏ có thể làm ngay.`,
+      },
+    ], { maxTokens: 700 });
+
+    console.log(`[counsel] provider: ${provider}`);
+    res.json({ content: text, provider });
+  } catch (err) {
+    console.error('AI counsel error:', err.message);
     res.status(500).json({ error: 'AI service error' });
   }
 });

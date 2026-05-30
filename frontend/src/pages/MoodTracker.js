@@ -355,6 +355,7 @@ export default function MoodTracker() {
   const [editingCause, setEditingCause] = useState('');
   const [editingCauseValue, setEditingCauseValue] = useState('');
   const [causeError, setCauseError] = useState('');
+  const [excludeFromAI, setExcludeFromAI] = useState(false);
   const [imageFiles, setImageFiles] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
   const [existingImages, setExistingImages] = useState([]);
@@ -479,12 +480,14 @@ export default function MoodTracker() {
         setNote(draft.note || '');
         setCauses(Array.isArray(draft.causes) ? draft.causes : []);
         setMetrics(normalizeMetrics(draft.metrics));
+        setExcludeFromAI(!!draft.excludeFromAI);
         setDraftStatus('Đã khôi phục nháp hôm nay.');
       } else {
         setSelected(null);
         setNote('');
         setCauses([]);
         setMetrics(DEFAULT_METRICS);
+        setExcludeFromAI(false);
       }
     } catch {
       localStorage.removeItem(todayDraftKey);
@@ -508,13 +511,14 @@ export default function MoodTracker() {
         note,
         causes,
         metrics,
+        excludeFromAI,
         savedAt: Date.now(),
       }));
       setDraftStatus('Đã tự lưu nháp.');
     }, 450);
 
     return () => window.clearTimeout(timeout);
-  }, [selected, note, causes, metrics, hasMetricDraft, imageFiles, editingId, draftReady, todayDraftKey]);
+  }, [selected, note, causes, metrics, excludeFromAI, hasMetricDraft, imageFiles, editingId, draftReady, todayDraftKey]);
 
   // Tự động tóm tắt ngày hôm qua nếu chưa có trong memory
   React.useEffect(() => {
@@ -529,7 +533,7 @@ export default function MoodTracker() {
 
       // Lấy logs của hôm qua
       const yesterdayLogs = moodLogs.filter(
-        l => new Date(l.date).toDateString() === yesterdayStr
+        l => !l.excludeFromAI && new Date(l.date).toDateString() === yesterdayStr
       );
       if (yesterdayLogs.length === 0) return;
 
@@ -667,6 +671,7 @@ export default function MoodTracker() {
     setNote('');
     setCauses([]);
     setMetrics(DEFAULT_METRICS);
+    setExcludeFromAI(false);
     setEditingId(null);
     setShowNoteIcons(false);
     imagePreviews.forEach(item => URL.revokeObjectURL(item.url));
@@ -982,6 +987,7 @@ export default function MoodTracker() {
     setNote(cleanNote);
     setCauses(causesInNote);
     setMetrics(normalizeMetrics(log.metrics));
+    setExcludeFromAI(!!log.excludeFromAI);
     setExistingImages(logAttachments(log));
     imagePreviews.forEach(item => URL.revokeObjectURL(item.url));
     setImageFiles([]);
@@ -1028,7 +1034,7 @@ export default function MoodTracker() {
         note: request.fullNote,
         metrics: request.metrics,
         date: new Date().toISOString(),
-      }].filter(l => new Date(l.date).toDateString() === new Date().toDateString());
+      }].filter(l => !l.excludeFromAI && new Date(l.date).toDateString() === new Date().toDateString());
       const entries = todayLogs.map(l => {
         const m = allMoods.find(x => x.id === l.mood);
         const causesInNote = l.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
@@ -1085,11 +1091,11 @@ export default function MoodTracker() {
       setSaveStatus('Đang lưu check-in...');
 
       if (editingId) {
-        await updateMoodLog(editingId, moodId, fullNote, currentMetrics, imagePayload);
+        await updateMoodLog(editingId, moodId, fullNote, currentMetrics, imagePayload, { excludeFromAI });
         setCheckinFeedback('Đã cập nhật ghi chú cảm xúc.');
         resetForm();
       } else {
-        await addMoodLog(moodId, fullNote, currentMetrics, imagePayload || null);
+        await addMoodLog(moodId, fullNote, currentMetrics, imagePayload || null, { excludeFromAI });
         setCheckinFeedback(imagePayload?.length
           ? 'Đã lưu cảm xúc cùng ảnh check-in.'
           : 'Đã lưu cảm xúc. Vườn, streak và huy hiệu của bạn đang được cập nhật.');
@@ -1098,9 +1104,14 @@ export default function MoodTracker() {
       window.setTimeout(() => setCheckinFeedback(''), 3200);
       setSaving(false);
       setSaveStatus('');
+      if (excludeFromAI) {
+        setCheckinFeedback('Đã lưu ghi chú riêng tư. MindBuddy sẽ không gửi dòng này cho AI.');
+        window.setTimeout(() => setCheckinFeedback(''), 3600);
+        return;
+      }
       selectTab('insight');
 
-      const recentMoods = moodLogs.slice(0, 7)
+      const recentMoods = moodLogs.filter(l => !l.excludeFromAI).slice(0, 7)
         .map(l => allMoods.find(m => m.id === l.mood))
         .filter(Boolean);
       await runMoodAnalysis({
@@ -1605,6 +1616,18 @@ export default function MoodTracker() {
                       <RichText text={note} className="note-preview-content" />
                     </div>
                   )}
+                  <label className={`ai-privacy-toggle ${excludeFromAI ? 'active' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={excludeFromAI}
+                      onChange={e => setExcludeFromAI(e.target.checked)}
+                    />
+                    <span className="ai-privacy-icon" aria-hidden="true">🔒</span>
+                    <span>
+                      <strong>Không gửi dòng này cho AI</strong>
+                      <small>Vẫn lưu trong nhật ký, nhưng bỏ qua khi tạo insight, chat memory và nhìn lại ngày bằng AI.</small>
+                    </span>
+                  </label>
                   <div
                     className={`checkin-photo-field ${mediaDropActive ? 'drop-active' : ''}`}
                     onDragEnter={handleMediaDragEnter}
@@ -2141,6 +2164,9 @@ export default function MoodTracker() {
                                   </span>
                                   {mood?.id?.toString().startsWith('custom_') && (
                                     <span className="custom-badge">tùy chỉnh</span>
+                                  )}
+                                  {log.excludeFromAI && (
+                                    <span className="ai-private-badge" title="Dòng này không được gửi cho AI">riêng tư AI</span>
                                   )}
                                   <div className="entry-actions">
                                     <button className="entry-btn edit"

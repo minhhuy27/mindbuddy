@@ -112,6 +112,43 @@ export function createChat(initialAdvice, moodContext, existingMessages = [], ai
 }
 
 /**
+ * Gọi endpoint tư vấn tự hỗ trợ.
+ */
+export async function counselMindBuddy({
+  mode,
+  distressLevel,
+  message,
+  history = [],
+  journalContext = [],
+  userGoal = '',
+}) {
+  try {
+    const goal = goalText(userGoal);
+    const res = await fetchWithTimeout(`${API_BASE}/ai/counsel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode,
+        distressLevel,
+        message,
+        history,
+        journalContext,
+        userGoal: goal,
+      }),
+    });
+    if (!res.ok) throw new Error('Server error');
+    const data = await res.json();
+    return {
+      content: data.content || '',
+      provider: data.provider || '',
+    };
+  } catch (err) {
+    console.error('counselMindBuddy error:', err);
+    throw err;
+  }
+}
+
+/**
  * Tóm tắt 1 ngày để lưu vào aiMemory.
  * entries: [{ moodLabel, note, causes, metrics }]
  * Trả về chuỗi tóm tắt ngắn.
@@ -160,9 +197,10 @@ export async function reviewDay({ date, entries, pomodoros, userGoal }) {
  * Phân tích xu hướng tuần.
  */
 export async function analyzeWeeklyTrend(moodLogs, MOODS, userGoal) {
-  if (moodLogs.length < 3) return null;
+  const aiVisibleLogs = moodLogs.filter(log => !log.excludeFromAI);
+  if (aiVisibleLogs.length < 3) return null;
 
-  const recent = moodLogs.slice(0, 14).map(l => {
+  const recent = aiVisibleLogs.slice(0, 14).map(l => {
     const mood = MOODS.find(m => m.id === l.mood);
     const d = new Date(l.date);
     const days = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
