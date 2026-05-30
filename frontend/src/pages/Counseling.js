@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import CrisisPanel from '../components/CrisisPanel';
 import { useApp } from '../context/AppContext';
@@ -81,8 +81,29 @@ function safeMessage(text) {
   return String(text || '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+function readSavedSession(key) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || 'null');
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      mode: MODES.some(item => item.id === parsed.mode) ? parsed.mode : 'listen',
+      distressLevel: Math.max(1, Math.min(5, Number(parsed.distressLevel) || 3)),
+      useJournalContext: parsed.useJournalContext !== false,
+      input: typeof parsed.input === 'string' ? parsed.input : '',
+      provider: typeof parsed.provider === 'string' ? parsed.provider : '',
+      messages: Array.isArray(parsed.messages)
+        ? parsed.messages
+          .filter(message => message && (message.role === 'user' || message.role === 'ai') && typeof message.text === 'string')
+          .slice(-80)
+        : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default function Counseling() {
-  const { moodLogs, MOODS, customMoods, userGoal, currentGoal } = useApp();
+  const { user, moodLogs, MOODS, customMoods, userGoal, currentGoal } = useApp();
   const [mode, setMode] = useState('listen');
   const [distressLevel, setDistressLevel] = useState(3);
   const [useJournalContext, setUseJournalContext] = useState(true);
@@ -92,6 +113,12 @@ export default function Counseling() {
   const [error, setError] = useState('');
   const [showCrisis, setShowCrisis] = useState(false);
   const [provider, setProvider] = useState('');
+  const [sessionReady, setSessionReady] = useState(false);
+
+  const sessionKey = useMemo(
+    () => `mb_counseling_session_${user?.uid || user?.email || 'guest'}`,
+    [user?.email, user?.uid]
+  );
 
   const allMoods = useMemo(
     () => [...MOODS, ...(customMoods || [])],
@@ -106,6 +133,53 @@ export default function Counseling() {
   const selectedMode = MODES.find(item => item.id === mode) || MODES[0];
   const latestMood = journalContext[0];
   const aiGoal = currentGoal?.label || userGoal || '';
+
+  useEffect(() => {
+    setSessionReady(false);
+    const saved = readSavedSession(sessionKey);
+    if (saved) {
+      setMode(saved.mode);
+      setDistressLevel(saved.distressLevel);
+      setUseJournalContext(saved.useJournalContext);
+      setInput(saved.input);
+      setMessages(saved.messages);
+      setProvider(saved.provider);
+    } else {
+      setMode('listen');
+      setDistressLevel(3);
+      setUseJournalContext(true);
+      setInput('');
+      setMessages([]);
+      setProvider('');
+    }
+    setError('');
+    setShowCrisis(false);
+    setSessionReady(true);
+  }, [sessionKey]);
+
+  useEffect(() => {
+    if (!sessionReady) return;
+    const isDefaultEmptySession = messages.length === 0
+      && !input.trim()
+      && !provider
+      && mode === 'listen'
+      && distressLevel === 3
+      && useJournalContext;
+    if (isDefaultEmptySession) {
+      localStorage.removeItem(sessionKey);
+      return;
+    }
+    const payload = {
+      mode,
+      distressLevel,
+      useJournalContext,
+      input,
+      provider,
+      messages: messages.slice(-80),
+      savedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(sessionKey, JSON.stringify(payload));
+  }, [distressLevel, input, messages, mode, provider, sessionKey, sessionReady, useJournalContext]);
 
   const sendMessage = async (messageText = input) => {
     const text = safeMessage(messageText);
@@ -160,7 +234,9 @@ export default function Counseling() {
   };
 
   const clearSession = () => {
+    localStorage.removeItem(sessionKey);
     setMessages([]);
+    setInput('');
     setError('');
     setProvider('');
     setShowCrisis(false);
@@ -302,7 +378,7 @@ export default function Counseling() {
               }}
             />
             <div>
-              <small>{provider ? `AI: ${provider}` : 'Ctrl + Enter để gửi nhanh'}</small>
+              <small>{provider ? `AI: ${provider} · Đã lưu trên thiết bị này` : 'Ctrl + Enter để gửi nhanh · Đã lưu trên thiết bị này'}</small>
               <button className="btn btn-primary" type="submit" disabled={!input.trim() || loading}>
                 {loading ? 'Đang gửi...' : 'Gửi'}
               </button>
