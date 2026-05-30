@@ -520,7 +520,8 @@ export default function Dashboard() {
     if (detectDanger(quickNote)) setShowCrisis(true);
     const mood = allMoods.find(m => m.id === quickMood);
     const note = quickNote;
-    const recentMoods = moodLogs.slice(0, 7)
+    const aiVisibleMoodLogs = moodLogs.filter(log => !log.excludeFromAI);
+    const recentMoods = aiVisibleMoodLogs.slice(0, 7)
       .map(l => allMoods.find(m => m.id === l.mood))
       .filter(Boolean);
 
@@ -569,7 +570,7 @@ export default function Dashboard() {
       const todayLabel = format(new Date(), 'dd/MM/yyyy');
       const todayEntries = [
         { moodLabel: mood?.label || 'Không rõ', note, causes: [] },
-        ...moodLogs
+        ...aiVisibleMoodLogs
           .filter(l => new Date(l.date).toDateString() === new Date().toDateString())
           .map(l => {
             const m = allMoods.find(x => x.id === l.mood);

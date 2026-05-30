@@ -544,8 +544,16 @@ export function AppProvider({ children }) {
     }
   };
 
-  const addMoodLog = async (mood, note, metrics = null, images = null) => {
-    const log = { id: Date.now(), mood, note, metrics, ...formatImageFields(images), date: new Date().toISOString() };
+  const addMoodLog = async (mood, note, metrics = null, images = null, options = {}) => {
+    const log = {
+      id: Date.now(),
+      mood,
+      note,
+      metrics,
+      ...formatImageFields(images),
+      date: new Date().toISOString(),
+      excludeFromAI: !!options.excludeFromAI,
+    };
     const next = [log, ...data.moodLogs];
     setData(prev => ({ ...prev, moodLogs: next }));
     if (user?.uid) writeUserCache(user.uid, { ...data, moodLogs: next });
@@ -561,13 +569,14 @@ export function AppProvider({ children }) {
   };
 
   // Cập nhật một log cụ thể theo id
-  const updateMoodLog = async (id, mood, note, metrics = null, images) => {
+  const updateMoodLog = async (id, mood, note, metrics = null, images, options = {}) => {
     const current = data.moodLogs.find(l => l.id === id);
     const currentAttachments = normalizeMoodAttachments(current);
     const nextAttachments = images && images !== null ? normalizeMoodAttachments(Array.isArray(images) ? images : [images]) : [];
+    const hasPrivacyOption = Object.prototype.hasOwnProperty.call(options, 'excludeFromAI');
     const next = data.moodLogs.map(l => {
       if (l.id !== id) return l;
-      const base = { ...l, mood, note, metrics };
+      const base = { ...l, mood, note, metrics, excludeFromAI: hasPrivacyOption ? !!options.excludeFromAI : !!l.excludeFromAI };
       if (images === undefined) return base;
       if (images === null) {
         const { attachments: _attachments, images: _images, image: _image, imageUrl: _imageUrl, imagePath: _imagePath, ...withoutImage } = base;

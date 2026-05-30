@@ -11,6 +11,7 @@ const PRIMARY_NAV = [
 ];
 
 const MORE_NAV = [
+  { path: '/counseling', icon: '🫶', label: 'Tư vấn' },
   { path: '/profile', icon: '👤', label: 'Hồ sơ' },
   { path: '/memories', icon: '🖼️', label: 'Ký ức' },
   { path: '/storage', icon: '🧹', label: 'Dung lượng' },
@@ -144,6 +145,8 @@ export default function Layout({ children }) {
                             ? 'Tóm tắt ngày'
                             : item.path === '/profile'
                               ? 'Mục tiêu và chỉ số'
+                            : item.path === '/counseling'
+                              ? 'Lắng nghe và gỡ rối'
                             : item.path === '/memories'
                               ? 'Ảnh, video, âm thanh'
                               : item.path === '/storage'
