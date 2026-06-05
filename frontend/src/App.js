@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import DailyReview from './pages/DailyReview';
 import Needs from './pages/Needs';
+import Timeline from './pages/Timeline';
 import GoodMoments from './pages/GoodMoments';
 import MediaCenter from './pages/MediaCenter';
 import StorageManager from './pages/StorageManager';
@@ -25,6 +26,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/needs" element={<Needs />} />
+        <Route path="/timeline" element={<Timeline />} />
         <Route path="/daily-review" element={<DailyReview />} />
         <Route path="/good-moments" element={<GoodMoments />} />
         <Route path="/memories" element={<MediaCenter />} />

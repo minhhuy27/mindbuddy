@@ -553,6 +553,7 @@ export function AppProvider({ children }) {
       ...formatImageFields(images),
       date: new Date().toISOString(),
       excludeFromAI: !!options.excludeFromAI,
+      pinned: !!options.pinned,
     };
     const next = [log, ...data.moodLogs];
     setData(prev => ({ ...prev, moodLogs: next }));
@@ -604,6 +605,15 @@ export function AppProvider({ children }) {
     normalizeMoodAttachments(current).forEach(attachment => {
       if (attachment.path) deleteMoodImage(attachment.path);
     });
+  };
+
+  const toggleMoodLogPinned = async (id) => {
+    const next = data.moodLogs.map(log => (
+      log.id === id ? { ...log, pinned: !log.pinned, pinnedAt: !log.pinned ? new Date().toISOString() : null } : log
+    ));
+    setData(prev => ({ ...prev, moodLogs: next }));
+    if (user?.uid) writeUserCache(user.uid, { ...data, moodLogs: next });
+    if (user) await setDoc(userRef(user.uid), { moodLogs: next }, { merge: true });
   };
 
   // Giữ lại updateTodayMood để tương thích
@@ -798,7 +808,7 @@ export function AppProvider({ children }) {
       user, logout,
       ...data,
       MOODS, BADGES,
-      addMoodLog, updateTodayMood, updateMoodLog, deleteMoodLog, todayMood,
+      addMoodLog, updateTodayMood, updateMoodLog, deleteMoodLog, toggleMoodLogPinned, todayMood,
       incrementPomodoro,
       incrementMeditate,
       addConfession, hugConfession,

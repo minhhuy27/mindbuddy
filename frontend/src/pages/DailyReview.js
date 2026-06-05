@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { format, subDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useApp } from '../context/AppContext';
@@ -25,6 +25,12 @@ const AFTER_FEELING_LABELS = {
 
 function keyForDate(date) {
   return format(date, 'yyyy-MM-dd');
+}
+
+function isDateKey(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false;
+  const date = new Date(`${value}T12:00:00`);
+  return !Number.isNaN(date.getTime());
 }
 
 function sameDateKey(value, dateKey) {
@@ -268,10 +274,22 @@ export default function DailyReview() {
     user, moodLogs, MOODS, customMoods, userGoal, currentGoal,
     dailyReviews, saveDailyReview,
   } = useApp();
-  const [selectedDateKey, setSelectedDateKey] = React.useState(keyForDate(new Date()));
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedDateKey, setSelectedDateKey] = React.useState(() => {
+    const dateParam = searchParams.get('date');
+    return isDateKey(dateParam) ? dateParam : keyForDate(new Date());
+  });
   const [loading, setLoading] = React.useState(false);
   const [attemptedKey, setAttemptedKey] = React.useState('');
   const [notice, setNotice] = React.useState('');
+
+  React.useEffect(() => {
+    const dateParam = searchParams.get('date');
+    if (!isDateKey(dateParam) || dateParam === selectedDateKey) return;
+    setSelectedDateKey(dateParam);
+    setAttemptedKey('');
+    setNotice('');
+  }, [searchParams, selectedDateKey]);
 
   const allMoods = React.useMemo(
     () => [...MOODS, ...(customMoods || [])],
@@ -280,15 +298,23 @@ export default function DailyReview() {
 
   const pomodoroSessions = React.useMemo(() => readPomodoroSessions(user), [user]);
 
-  const dateOptions = React.useMemo(() => (
-    Array.from({ length: 7 }, (_, i) => {
+  const dateOptions = React.useMemo(() => {
+    const options = Array.from({ length: 7 }, (_, i) => {
       const date = subDays(new Date(), i);
       return {
         key: keyForDate(date),
         label: i === 0 ? 'Hôm nay' : i === 1 ? 'Hôm qua' : format(date, 'EEE dd/MM', { locale: vi }),
       };
-    })
-  ), []);
+    });
+    if (!options.some(option => option.key === selectedDateKey) && isDateKey(selectedDateKey)) {
+      const selected = new Date(`${selectedDateKey}T12:00:00`);
+      options.unshift({
+        key: selectedDateKey,
+        label: format(selected, 'EEE dd/MM', { locale: vi }),
+      });
+    }
+    return options;
+  }, [selectedDateKey]);
 
   const selectedDate = React.useMemo(() => {
     const date = new Date(`${selectedDateKey}T12:00:00`);
@@ -492,6 +518,8 @@ export default function DailyReview() {
             className={selectedDateKey === option.key ? 'active' : ''}
             onClick={() => {
               setSelectedDateKey(option.key);
+              setSearchParams({ date: option.key });
+              setAttemptedKey('');
               setNotice('');
             }}
           >

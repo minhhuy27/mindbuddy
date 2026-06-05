@@ -317,7 +317,7 @@ function CustomMoodModal({ onClose, onSave }) {
 export default function MoodTracker() {
   const {
     MOODS, customMoods, moodLogs,
-    addMoodLog, updateMoodLog, deleteMoodLog,
+    addMoodLog, updateMoodLog, deleteMoodLog, toggleMoodLogPinned,
     addCustomMood, deleteCustomMood,
     user, todayAI, saveTodayAI, aiMemory, saveAiMemory, userGoal, currentGoal,
     causeOptions, saveCauseOptions,
@@ -2168,7 +2168,18 @@ export default function MoodTracker() {
                                   {log.excludeFromAI && (
                                     <span className="ai-private-badge" title="Dòng này không được gửi cho AI">riêng tư AI</span>
                                   )}
+                                  {log.pinned && (
+                                    <span className="pinned-badge" title="Ghi chú quan trọng">quan trọng</span>
+                                  )}
                                   <div className="entry-actions">
+                                    <button
+                                      className={`entry-btn pin ${log.pinned ? 'active' : ''}`}
+                                      onClick={() => toggleMoodLogPinned(log.id)}
+                                      title={log.pinned ? 'Bỏ ghim' : 'Ghim ghi chú'}
+                                      aria-label={`${log.pinned ? 'Bỏ ghim' : 'Ghim'} ghi chú lúc ${format(new Date(log.date), 'HH:mm')}`}
+                                    >
+                                      {log.pinned ? '★' : '☆'}
+                                    </button>
                                     <button className="entry-btn edit"
                                       onClick={() => startEdit(log)} title="Chỉnh sửa" aria-label={`Chỉnh sửa ghi chú lúc ${format(new Date(log.date), 'HH:mm')}`}>✏️</button>
                                     <button className="entry-btn delete"

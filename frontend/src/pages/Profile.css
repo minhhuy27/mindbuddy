@@ -394,6 +394,7 @@
 .profile-progress-list,
 .profile-cause-list,
 .profile-stabilizer-list,
+.profile-pinned-list,
 .profile-recent-list {
   display: flex;
   flex-direction: column;
@@ -403,6 +404,7 @@
 .profile-progress-list > div,
 .profile-cause-list > div,
 .profile-stabilizer-list > div,
+.profile-pinned-list > article,
 .profile-recent-list > div,
 .profile-metric {
   border: 1px solid var(--border);
@@ -485,6 +487,52 @@
 
 .profile-stabilizer-list > div {
   border-left: 4px solid var(--primary);
+}
+
+.profile-pinned-list > article {
+  border-left: 4px solid var(--pin-color);
+  display: grid;
+  gap: 8px;
+}
+
+.profile-pinned-list article > div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profile-pinned-list time {
+  color: var(--text-muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 900;
+  margin-bottom: 3px;
+}
+
+.profile-pinned-list strong {
+  color: var(--text);
+}
+
+.profile-pinned-list p {
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.profile-pinned-list button {
+  justify-self: start;
+  border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning) 12%, var(--card));
+  color: #9a6a00;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 6px 10px;
+}
+
+.profile-pinned-list button:hover {
+  border-color: var(--warning);
 }
 
 .profile-stabilizer-list strong,

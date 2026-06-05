@@ -1093,6 +1093,23 @@
 }
 .entry-btn.edit:hover { background: var(--accent-purple); border-color: var(--primary); }
 .entry-btn.delete:hover { background: var(--accent-red); border-color: var(--danger); }
+.entry-btn.pin:hover,
+.entry-btn.pin.active {
+  background: color-mix(in srgb, var(--warning) 16%, var(--card));
+  border-color: var(--warning);
+  color: #9a6a00;
+}
+
+.pinned-badge {
+  border: 1px solid color-mix(in srgb, var(--warning) 65%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning) 14%, var(--card));
+  color: #9a6a00;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
 
 .entry-causes { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
 .entry-cause-tag {

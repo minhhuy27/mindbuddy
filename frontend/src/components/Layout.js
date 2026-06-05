@@ -11,6 +11,7 @@ const PRIMARY_NAV = [
 ];
 
 const MORE_NAV = [
+  { path: '/timeline', icon: '🧭', label: 'Timeline' },
   { path: '/counseling', icon: '🫶', label: 'Tư vấn' },
   { path: '/profile', icon: '👤', label: 'Hồ sơ' },
   { path: '/memories', icon: '🖼️', label: 'Ký ức' },
@@ -143,6 +144,8 @@ export default function Layout({ children }) {
                         <small>
                           {item.path === '/daily-review'
                             ? 'Tóm tắt ngày'
+                            : item.path === '/timeline'
+                              ? 'Trục thời gian'
                             : item.path === '/profile'
                               ? 'Mục tiêu và chỉ số'
                             : item.path === '/counseling'

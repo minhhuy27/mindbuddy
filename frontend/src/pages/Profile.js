@@ -56,6 +56,7 @@ export default function Profile() {
     user, moodLogs, MOODS, customMoods, userGoal, setUserGoal,
     goalOptions, currentGoal, saveGoalOptions,
     getStreak, pomodoroCount, gardenLevel, earnedBadges, BADGES,
+    toggleMoodLogPinned,
     importDataFromUid, reloadUserData, inspectCurrentUserData, getCurrentUserRawData, recoverMoodLogsFromReviews,
   } = useApp();
   const [goalEditorOpen, setGoalEditorOpen] = React.useState(false);
@@ -186,6 +187,12 @@ export default function Profile() {
   }, [causeStats, enrichedLogs]);
 
   const recentLogs = enrichedLogs.slice(0, 5);
+  const pinnedLogs = React.useMemo(() => (
+    enrichedLogs
+      .filter(log => log.pinned)
+      .sort((a, b) => new Date(b.pinnedAt || b.date) - new Date(a.pinnedAt || a.date))
+      .slice(0, 6)
+  ), [enrichedLogs]);
   const activeGoals = goalOptions || [];
   const streak = getStreak(moodLogs);
   const earnedBadgeItems = BADGES.filter(badge => earnedBadges?.includes(badge.id));
@@ -649,6 +656,34 @@ export default function Profile() {
             </div>
           ) : (
             <p className="profile-empty">Ghi thêm vài ngày nữa, MindBuddy sẽ tự rút ra điều gì thường giúp bạn ổn hơn.</p>
+          )}
+        </div>
+
+        <div className="card profile-pinned-card">
+          <div className="profile-card-head">
+            <div>
+              <span>Điều mình cần nhớ</span>
+              <h2>Note quan trọng</h2>
+            </div>
+            <Link to="/mood?tab=history">Lịch sử</Link>
+          </div>
+          {pinnedLogs.length ? (
+            <div className="profile-pinned-list">
+              {pinnedLogs.map(log => (
+                <article key={log.id || log.date} style={{ '--pin-color': log.mood?.color || 'var(--warning)' }}>
+                  <div>
+                    <time>{format(new Date(log.date), 'dd/MM/yyyy HH:mm', { locale: vi })}</time>
+                    <strong>{log.mood?.emoji} {log.mood?.label || 'Không rõ'}</strong>
+                  </div>
+                  <p>{log.noteText || 'Không có ghi chú.'}</p>
+                  <button type="button" onClick={() => toggleMoodLogPinned(log.id)}>
+                    Bỏ ghim
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="profile-empty">Chưa có note quan trọng. Vào Lịch sử cảm xúc và bấm ☆ cạnh một check-in để ghim lại.</p>
           )}
         </div>
 
