@@ -26,12 +26,62 @@ const DASHBOARD_BLOCKS = [
   { id: 'pomodoro', icon: '🍅', label: 'Pomodoro' },
   { id: 'good', icon: '✨', label: 'Khoảnh khắc tốt' },
   { id: 'patterns', icon: '🧩', label: 'Pattern cá nhân' },
+  { id: 'tools', icon: '🧰', label: 'Công cụ hôm nay' },
+  { id: 'weeklyInsight', icon: '🤖', label: 'Phân tích AI' },
+  { id: 'stats', icon: '📊', label: 'Thống kê' },
+  { id: 'energy', icon: '⚡', label: 'Bản đồ năng lượng' },
+  { id: 'moodGoal', icon: '🎯', label: 'Biểu đồ & mục tiêu' },
+  { id: 'badges', icon: '🏅', label: 'Huy hiệu' },
+  { id: 'notifications', icon: '🔔', label: 'Nhắc nhở' },
 ];
 
-const DEFAULT_DASHBOARD_LAYOUT = DASHBOARD_BLOCKS.map(block => ({
-  id: block.id,
-  visible: true,
-}));
+function createDashboardLayout(visibleIds = DASHBOARD_BLOCKS.map(block => block.id)) {
+  const visibleSet = new Set(visibleIds);
+  return DASHBOARD_BLOCKS.map(block => ({
+    id: block.id,
+    visible: visibleSet.has(block.id),
+  }));
+}
+
+const DASHBOARD_PRESETS = [
+  {
+    id: 'minimal',
+    icon: '⚡',
+    label: 'Tối giản',
+    desc: 'Chỉ giữ hôm nay, check-in nhanh và việc nhỏ tiếp theo.',
+    blockIds: [],
+    extras: { tools: false, weeklyInsight: false, deep: false },
+  },
+  {
+    id: 'balanced',
+    icon: '◐',
+    label: 'Cân bằng',
+    desc: 'Thêm tuần này, tệp gần đây, lối tắt và phân tích AI.',
+    blockIds: ['week', 'memories', 'tools', 'weeklyInsight'],
+    extras: { tools: true, weeklyInsight: true, deep: false },
+  },
+  {
+    id: 'full',
+    icon: '▣',
+    label: 'Đầy đủ',
+    desc: 'Hiển thị toàn bộ khối, thống kê, insight và cấu hình.',
+    blockIds: DASHBOARD_BLOCKS.map(block => block.id),
+    extras: { tools: true, weeklyInsight: true, deep: true },
+  },
+];
+
+const CUSTOM_DASHBOARD_PRESET = {
+  id: 'custom',
+  icon: '✦',
+  label: 'Tùy chỉnh',
+  desc: 'Bạn đang tự chọn khối hiển thị.',
+  extras: { tools: true, weeklyInsight: true, deep: false },
+};
+
+const DEFAULT_DASHBOARD_PRESET = 'balanced';
+const DEFAULT_DASHBOARD_LAYOUT = createDashboardLayout(
+  DASHBOARD_PRESETS.find(preset => preset.id === DEFAULT_DASHBOARD_PRESET)?.blockIds
+);
 
 const QUICK_FORMAT_TOOLS = [
   { id: 'bold', label: 'B', title: 'Bôi đậm', prefix: '**', suffix: '**', sample: 'nội dung quan trọng' },
@@ -105,9 +155,10 @@ function readPomodoroMoodSessions(user) {
   }
 }
 
-function normalizeDashboardLayout(layout) {
+function normalizeDashboardLayout(layout, fallbackVisibleIds = DASHBOARD_BLOCKS.map(block => block.id)) {
   const incoming = Array.isArray(layout) ? layout : [];
   const byId = new Map(incoming.map(item => [item?.id, item]));
+  const fallbackVisibleSet = new Set(fallbackVisibleIds || []);
   const ordered = incoming
     .filter(item => DASHBOARD_BLOCKS.some(block => block.id === item?.id))
     .map(item => ({
@@ -116,7 +167,7 @@ function normalizeDashboardLayout(layout) {
     }));
   const missing = DASHBOARD_BLOCKS
     .filter(block => !byId.has(block.id))
-    .map(block => ({ id: block.id, visible: true }));
+    .map(block => ({ id: block.id, visible: fallbackVisibleSet.has(block.id) }));
 
   return [...ordered, ...missing];
 }
@@ -147,7 +198,12 @@ export default function Dashboard() {
     () => `mb_dashboard_layout_${user?.uid || user?.email || 'guest'}`,
     [user]
   );
+  const dashboardPresetKey = React.useMemo(
+    () => `mb_dashboard_preset_${user?.uid || user?.email || 'guest'}`,
+    [user]
+  );
   const [dashboardLayout, setDashboardLayout] = React.useState(DEFAULT_DASHBOARD_LAYOUT);
+  const [dashboardPreset, setDashboardPreset] = React.useState(DEFAULT_DASHBOARD_PRESET);
 
   const today = new Date();
   const allMoods = React.useMemo(
@@ -171,11 +227,30 @@ export default function Dashboard() {
 
   React.useEffect(() => {
     try {
-      setDashboardLayout(normalizeDashboardLayout(JSON.parse(localStorage.getItem(dashboardLayoutKey) || '[]')));
+      const rawPreset = localStorage.getItem(dashboardPresetKey);
+      const savedPreset = rawPreset || DEFAULT_DASHBOARD_PRESET;
+      const presetExists = savedPreset === CUSTOM_DASHBOARD_PRESET.id || DASHBOARD_PRESETS.some(preset => preset.id === savedPreset);
+      const nextPreset = presetExists ? savedPreset : DEFAULT_DASHBOARD_PRESET;
+      const presetBlockIds = DASHBOARD_PRESETS.find(preset => preset.id === nextPreset)?.blockIds || [];
+      const savedLayout = rawPreset ? localStorage.getItem(dashboardLayoutKey) : null;
+      setDashboardPreset(nextPreset);
+      setDashboardLayout(savedLayout
+        ? normalizeDashboardLayout(JSON.parse(savedLayout), presetBlockIds)
+        : createDashboardLayout(presetBlockIds));
     } catch {
+      setDashboardPreset(DEFAULT_DASHBOARD_PRESET);
       setDashboardLayout(DEFAULT_DASHBOARD_LAYOUT);
     }
-  }, [dashboardLayoutKey]);
+  }, [dashboardLayoutKey, dashboardPresetKey]);
+
+  const persistDashboardPreset = React.useCallback((presetId) => {
+    setDashboardPreset(presetId);
+    try {
+      localStorage.setItem(dashboardPresetKey, presetId);
+    } catch {
+      // Preset persistence is optional.
+    }
+  }, [dashboardPresetKey]);
 
   const updateDashboardLayout = React.useCallback((updater) => {
     setDashboardLayout(current => {
@@ -190,12 +265,14 @@ export default function Dashboard() {
   }, [dashboardLayoutKey]);
 
   const toggleDashboardBlock = React.useCallback((blockId) => {
+    persistDashboardPreset(CUSTOM_DASHBOARD_PRESET.id);
     updateDashboardLayout(layout => layout.map(item => (
       item.id === blockId ? { ...item, visible: !item.visible } : item
     )));
-  }, [updateDashboardLayout]);
+  }, [persistDashboardPreset, updateDashboardLayout]);
 
   const moveDashboardBlock = React.useCallback((blockId, direction) => {
+    persistDashboardPreset(CUSTOM_DASHBOARD_PRESET.id);
     updateDashboardLayout(layout => {
       const next = [...layout];
       const index = next.findIndex(item => item.id === blockId);
@@ -204,11 +281,17 @@ export default function Dashboard() {
       [next[index], next[target]] = [next[target], next[index]];
       return next;
     });
-  }, [updateDashboardLayout]);
+  }, [persistDashboardPreset, updateDashboardLayout]);
+
+  const applyDashboardPreset = React.useCallback((presetId) => {
+    const preset = DASHBOARD_PRESETS.find(item => item.id === presetId) || DASHBOARD_PRESETS.find(item => item.id === DEFAULT_DASHBOARD_PRESET);
+    persistDashboardPreset(preset.id);
+    updateDashboardLayout(createDashboardLayout(preset.blockIds));
+  }, [persistDashboardPreset, updateDashboardLayout]);
 
   const resetDashboardLayout = React.useCallback(() => {
-    updateDashboardLayout(DEFAULT_DASHBOARD_LAYOUT);
-  }, [updateDashboardLayout]);
+    applyDashboardPreset(DEFAULT_DASHBOARD_PRESET);
+  }, [applyDashboardPreset]);
 
   const last7 = Array.from({ length: 7 }, (_, i) => {
     const d = subDays(today, 6 - i);
@@ -938,12 +1021,279 @@ export default function Dashboard() {
       );
     }
 
+    if (blockId === 'tools') {
+      return (
+        <section key={blockId} className="quick-actions today-tools dashboard-custom-block">
+          <div className="section-heading-row mb-3">
+            <div>
+              <h3>Công cụ cho hôm nay</h3>
+              <p className="text-muted">Các lối tắt bạn có thể dùng ngay trong ngày.</p>
+            </div>
+          </div>
+          <div className="actions-grid">
+            {[
+              { to: '/mood', icon: '💭', label: latestTodayMood ? 'Ghi thêm cảm xúc' : 'Ghi cảm xúc', color: '#a29bfe', primary: true },
+              { to: '/needs', icon: '🧭', label: 'Mình cần gì?', color: '#00cec9' },
+              { to: '/daily-review', icon: '🪞', label: 'Nhìn lại ngày', color: '#00cec9' },
+              { to: '/good-moments', icon: '✨', label: 'Khoảnh khắc tốt', color: '#fdcb6e' },
+              { to: '/pomodoro', icon: '🍅', label: 'Tập trung', color: '#fd79a8' },
+              { to: '/garden', icon: '🌱', label: 'Chăm vườn', color: '#55efc4' },
+              { to: '/community', icon: '🌍', label: 'Góc chia sẻ', color: '#74b9ff' },
+              { to: '/sos', icon: '🆘', label: 'S.O.S', color: '#e17055' },
+            ].map(a => (
+              <Link key={a.to} to={a.to} className={`action-card ${a.primary ? 'primary-action' : ''}`} style={{ '--action-color': a.color }} aria-label={a.label}>
+                <span className="action-icon" aria-hidden="true">{a.icon}</span>
+                <span className="action-label">{a.label}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (blockId === 'weeklyInsight') {
+      return (
+        <div key={blockId} className="dashboard-custom-block">
+          <WeeklyInsight />
+        </div>
+      );
+    }
+
+    if (blockId === 'stats') {
+      return (
+        <div key={blockId} className="stats-grid dashboard-custom-block">
+          <div className="stat-card progress-card">
+            <div className="stat-icon" aria-hidden="true">🔥</div>
+            <div className="stat-value">{streak}</div>
+            <div className="stat-label">Ngày liên tiếp</div>
+            <div className="mini-progress" role="progressbar" aria-valuemin="0" aria-valuemax="7" aria-valuenow={Math.min(streak, 7)} aria-label="Tiến trình streak">
+              <span style={{ width: `${streakProgress}%` }} />
+            </div>
+            <p className="progress-hint">{streak >= 7 ? 'Đã mở mốc 7 ngày liên tiếp' : `Còn ${7 - streak} ngày để đạt mốc 7 ngày`}</p>
+          </div>
+          <div className="stat-card progress-card">
+            <div className="stat-icon" aria-hidden="true">🍅</div>
+            <div className="stat-value">{pomodoroCount}</div>
+            <div className="stat-label">Pomodoro hoàn thành</div>
+            <div className="mini-progress" role="progressbar" aria-valuemin="0" aria-valuemax="10" aria-valuenow={Math.min(pomodoroCount, 10)} aria-label="Tiến trình huy hiệu Pomodoro">
+              <span style={{ width: `${pomodoroProgress}%` }} />
+            </div>
+            <p className="progress-hint">{nextPomodoro === 0 ? 'Đã đủ điều kiện huy hiệu tập trung' : `Còn ${nextPomodoro} lần Pomodoro để mở huy hiệu`}</p>
+          </div>
+          <div className="stat-card progress-card">
+            <div className="stat-icon" aria-hidden="true">{gardenEmoji}</div>
+            <div className="stat-value">{gardenLevel}%</div>
+            <div className="stat-label">Sức khỏe vườn</div>
+            <div className="mini-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={gardenLevel} aria-label="Sức khỏe vườn">
+              <span style={{ width: `${gardenProgress}%` }} />
+            </div>
+            <p className="progress-hint">{gardenLevel >= 100 ? 'Vườn đã đạt mức cao nhất' : `Còn ${gardenRemaining}% tới mốc ${nextGardenMilestone}%`}</p>
+          </div>
+          <div className="stat-card progress-card">
+            <div className="stat-icon" aria-hidden="true">🏅</div>
+            <div className="stat-value">{earnedBadges.length}</div>
+            <div className="stat-label">Huy hiệu đạt được</div>
+            <div className="mini-progress" role="progressbar" aria-valuemin="0" aria-valuemax={BADGES.length} aria-valuenow={earnedBadges.length} aria-label="Tiến trình huy hiệu">
+              <span style={{ width: `${badgeProgress}%` }} />
+            </div>
+            <p className="progress-hint">{earnedBadges.length >= BADGES.length ? 'Đã sưu tập toàn bộ huy hiệu' : `${earnedBadges.length}/${BADGES.length} huy hiệu đã mở`}</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (blockId === 'energy') {
+      return (
+        <section key={blockId} className="card energy-map-card dashboard-custom-block">
+          <div className="section-heading-row">
+            <div>
+              <h3>Bản đồ năng lượng trong ngày</h3>
+              <p className="text-muted">Trung bình 30 ngày gần nhất theo check-in và phản hồi Pomodoro.</p>
+            </div>
+            <Link to="/mood" className="quick-link">Thêm chỉ số</Link>
+          </div>
+
+          {energyMap.hasMetrics ? (
+            <div className="energy-map-layout">
+              <div className="energy-chart-wrap" aria-label="Biểu đồ stress, năng lượng và tập trung theo khung giờ">
+                <ResponsiveContainer width="100%" height={230}>
+                  <BarChart data={energyMap.data} barSize={16}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148, 163, 184, 0.22)" />
+                    <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                    <YAxis domain={[0, 5]} ticks={[1, 2, 3, 4, 5]} width={24} tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      formatter={(value, name) => [`${value}/5`, name]}
+                      labelFormatter={(label) => {
+                        const bucket = energyMap.data.find(item => item.label === label);
+                        return bucket ? `${bucket.label} (${bucket.range})` : label;
+                      }}
+                    />
+                    <Bar dataKey="stress" name="Stress" fill="#ff7675" radius={[5, 5, 0, 0]} />
+                    <Bar dataKey="energy" name="Năng lượng" fill="#55efc4" radius={[5, 5, 0, 0]} />
+                    <Bar dataKey="focus" name="Tập trung" fill="#a29bfe" radius={[5, 5, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="energy-legend" aria-label="Chú giải biểu đồ">
+                  <span><i className="stress" />Stress</span>
+                  <span><i className="energy" />Năng lượng</span>
+                  <span><i className="focus" />Tập trung</span>
+                </div>
+              </div>
+
+              <div className="energy-insights">
+                {energyMap.bestFocus && (
+                  <div className="energy-insight-item focus">
+                    <span>Tập trung tốt nhất</span>
+                    <strong>{energyMap.bestFocus.label}</strong>
+                    <p>
+                      Check-in {energyMap.bestFocus.focus || '-'}/5
+                      {energyMap.bestFocus.pomodoroFocus ? `, Pomodoro sau phiên ${energyMap.bestFocus.pomodoroFocus}/5` : ''}.
+                    </p>
+                  </div>
+                )}
+                {energyMap.highestStress && (
+                  <div className="energy-insight-item stress">
+                    <span>Dễ căng hơn</span>
+                    <strong>{energyMap.highestStress.label}</strong>
+                    <p>Stress trung bình {energyMap.highestStress.stress}/5 trong {energyMap.highestStress.checkins} check-in.</p>
+                  </div>
+                )}
+                {energyMap.bestEnergy && (
+                  <div className="energy-insight-item energy">
+                    <span>Nhiều năng lượng nhất</span>
+                    <strong>{energyMap.bestEnergy.label}</strong>
+                    <p>Năng lượng trung bình {energyMap.bestEnergy.energy}/5.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="energy-map-empty">
+              <span aria-hidden="true">⚡</span>
+              <div>
+                <strong>Chưa đủ dữ liệu chỉ số phụ</strong>
+                <p>Ghi thêm stress, năng lượng và tập trung trong vài check-in để MindBuddy vẽ nhịp trong ngày.</p>
+              </div>
+              <Link to="/mood" className="btn btn-primary">Ghi cảm xúc</Link>
+            </div>
+          )}
+        </section>
+      );
+    }
+
+    if (blockId === 'moodGoal') {
+      return (
+        <section key={blockId} className="dashboard-focus-grid secondary-dashboard-grid dashboard-custom-block">
+          <div className="card mood-chart-card">
+            <h3 className="mb-3">Biểu đồ cảm xúc 7 ngày</h3>
+            {moodLogs.length > 0 ? (
+              <ResponsiveContainer width="100%" height={180}>
+                <LineChart data={last7}>
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <YAxis domain={[0, 5]} hide />
+                  <Tooltip formatter={(v, name, props) => {
+                    if (!props.payload.hasData) return ['Chưa có dữ liệu', ''];
+                    const m = props.payload.mood || allMoods.find(m => m.score === v);
+                    return [m ? `${m.emoji} ${m.label}` : v, 'Cảm xúc'];
+                  }} />
+                  <Line
+                    type="monotone"
+                    dataKey="score"
+                    stroke="#6c63ff"
+                    strokeWidth={2.5}
+                    dot={(props) => {
+                      const { cx, cy, payload } = props;
+                      if (!payload.hasData) return null;
+                      return <circle key={`dot-${cx}-${cy}`} cx={cx} cy={cy} r={4} fill="#6c63ff" />;
+                    }}
+                    connectNulls={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="empty-state rich-empty">
+                <div className="empty-icon" aria-hidden="true">💭</div>
+                <h4>Chưa có dữ liệu cảm xúc</h4>
+                <p>Ghi cảm xúc đầu tiên để biểu đồ bắt đầu có ý nghĩa.</p>
+                <Link to="/mood" className="btn btn-primary">Ghi cảm xúc đầu tiên</Link>
+              </div>
+            )}
+          </div>
+
+          <div className="card goal-widget">
+            <div className="section-heading-row">
+              <div>
+                <h3>Mục tiêu cá nhân</h3>
+                <p className="text-muted">MindBuddy sẽ ưu tiên insight và lời khuyên theo mục tiêu này.</p>
+              </div>
+            </div>
+            <div className="goal-options">
+              {activeGoals.map(goal => (
+                <button
+                  key={goal.id}
+                  className={`goal-option ${userGoal === goal.id ? 'active' : ''}`}
+                  onClick={() => setUserGoal(goal.id)}
+                  aria-pressed={userGoal === goal.id}
+                >
+                  <strong>{goal.label}</strong>
+                  <span>{goal.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    if (blockId === 'badges') {
+      return (
+        <div key={blockId} className="card dashboard-custom-block">
+          <h3 className="mb-3">Huy hiệu của bạn</h3>
+          <div className="badges-grid">
+            {BADGES.map(b => (
+              <div key={b.id} className={`badge-item ${earnedBadges.includes(b.id) ? 'earned' : 'locked'}`}>
+                <span className="badge-icon">{earnedBadges.includes(b.id) ? b.icon : '🔒'}</span>
+                <span className="badge-name">{b.name}</span>
+                <span className="badge-desc">{b.desc}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (blockId === 'notifications') {
+      return (
+        <div key={blockId} className="dashboard-custom-block">
+          <NotificationSettings />
+        </div>
+      );
+    }
+
     return null;
   };
 
+  const activeDashboardPreset = DASHBOARD_PRESETS.find(item => item.id === dashboardPreset) || CUSTOM_DASHBOARD_PRESET;
   const visibleDashboardBlocks = dashboardLayout.filter(item => item.visible);
   const renderDashboardLayoutControls = () => (
-    <div className="dashboard-block-manager" aria-label="Tùy biến các khối trên Trang chủ">
+    <div className="dashboard-drawer-body">
+      <div className="dashboard-preset-list" aria-label="Chọn độ dài Trang chủ">
+        {[...DASHBOARD_PRESETS, ...(dashboardPreset === CUSTOM_DASHBOARD_PRESET.id ? [CUSTOM_DASHBOARD_PRESET] : [])].map(preset => (
+          <button
+            key={preset.id}
+            type="button"
+            className={`dashboard-preset-btn ${dashboardPreset === preset.id ? 'active' : ''}`}
+            onClick={() => preset.id !== CUSTOM_DASHBOARD_PRESET.id && applyDashboardPreset(preset.id)}
+            disabled={preset.id === CUSTOM_DASHBOARD_PRESET.id}
+            aria-pressed={dashboardPreset === preset.id}
+          >
+            <span aria-hidden="true">{preset.icon}</span>
+            <strong>{preset.label}</strong>
+            <small>{preset.desc}</small>
+          </button>
+        ))}
+      </div>
+      <div className="dashboard-block-manager" aria-label="Tùy biến các khối trên Trang chủ">
       {dashboardLayout.map((item, index) => {
         const block = DASHBOARD_BLOCKS.find(entry => entry.id === item.id);
         if (!block) return null;
@@ -969,11 +1319,12 @@ export default function Dashboard() {
           </div>
         );
       })}
+      </div>
     </div>
   );
 
   return (
-    <div className="dashboard">
+    <div className={`dashboard dashboard-mode-${activeDashboardPreset.id}`}>
       <section className="today-hero">
         <div className="today-hero-copy">
           <span className="today-date">{format(today, "EEEE, dd/MM/yyyy", { locale: vi })}</span>
@@ -1298,6 +1649,7 @@ export default function Dashboard() {
         </>
       )}
 
+      {false && (
       <section className="quick-actions today-tools">
         <div className="section-heading-row mb-3">
           <div>
@@ -1323,7 +1675,12 @@ export default function Dashboard() {
           ))}
         </div>
       </section>
+      )}
 
+      {false && <WeeklyInsight />}
+
+      {false && (
+        <>
       <div className="stats-grid">
         <div className="stat-card progress-card">
           <div className="stat-icon" aria-hidden="true">🔥</div>
@@ -1547,8 +1904,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <WeeklyInsight />
       <NotificationSettings />
+        </>
+      )}
 
       {selectedDayDetail && (
         <div className="dashboard-modal-overlay" onClick={e => e.target === e.currentTarget && setSelectedDayDetail(null)}>
