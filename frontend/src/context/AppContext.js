@@ -323,6 +323,7 @@ function normalizeGoalOptions(goals) {
 export function AppProvider({ children }) {
   const [user, setUser] = useState(undefined); // undefined = loading
   const [data, setData] = useState(DEFAULT_DATA);
+  const dataRef = useRef(DEFAULT_DATA);
   const [dataReady, setDataReady] = useState(false);
   const [syncNotice, setSyncNotice] = useState(null);
   const [backupState, setBackupState] = useState({ status: 'idle', lastBackupDate: '', error: '' });
@@ -330,6 +331,16 @@ export function AppProvider({ children }) {
   const backupTimerRef = useRef(null);
   const lastBackupSignatureRef = useRef('');
   const backupErrorNotifiedRef = useRef(false);
+
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+
+  const commitData = (nextData) => {
+    dataRef.current = nextData;
+    setData(nextData);
+    if (user?.uid) writeUserCache(user.uid, nextData);
+  };
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
@@ -395,9 +406,8 @@ export function AppProvider({ children }) {
   };
 
   const save = async (updates) => {
-    const nextData = { ...data, ...updates };
-    setData(nextData);
-    if (user?.uid) writeUserCache(user.uid, nextData);
+    const nextData = { ...dataRef.current, ...updates };
+    commitData(nextData);
     if (user) {
       try {
         await setDoc(userRef(user.uid), updates, { merge: true });
@@ -508,15 +518,17 @@ export function AppProvider({ children }) {
   };
 
   const checkBadge = async (id) => {
-    if (data.earnedBadges.includes(id)) return;
-    const next = [...data.earnedBadges, id];
-    setData(prev => ({ ...prev, earnedBadges: next }));
+    const current = dataRef.current;
+    if (current.earnedBadges.includes(id)) return;
+    const next = [...current.earnedBadges, id];
+    commitData({ ...current, earnedBadges: next });
     if (user) await updateDoc(userRef(user.uid), { earnedBadges: arrayUnion(id) });
   };
 
   const growGarden = async (points) => {
-    const next = Math.min(data.gardenLevel + points, 100);
-    setData(prev => ({ ...prev, gardenLevel: next }));
+    const current = dataRef.current;
+    const next = Math.min(current.gardenLevel + points, 100);
+    commitData({ ...current, gardenLevel: next });
     if (user) await updateDoc(userRef(user.uid), { gardenLevel: next });
   };
 
@@ -545,6 +557,7 @@ export function AppProvider({ children }) {
   };
 
   const addMoodLog = async (mood, note, metrics = null, images = null, options = {}) => {
+    const currentData = dataRef.current;
     const log = {
       id: Date.now(),
       mood,
@@ -555,13 +568,12 @@ export function AppProvider({ children }) {
       excludeFromAI: !!options.excludeFromAI,
       pinned: !!options.pinned,
     };
-    const next = [log, ...data.moodLogs];
-    setData(prev => ({ ...prev, moodLogs: next }));
-    if (user?.uid) writeUserCache(user.uid, { ...data, moodLogs: next });
+    const next = [log, ...currentData.moodLogs];
+    commitData({ ...currentData, moodLogs: next });
     if (user) await setDoc(userRef(user.uid), { moodLogs: next }, { merge: true });
     // Chỉ cộng điểm vườn cho lần đầu ghi trong ngày
     const todayStr = new Date().toDateString();
-    const alreadyToday = data.moodLogs.some(l => new Date(l.date).toDateString() === todayStr);
+    const alreadyToday = currentData.moodLogs.some(l => new Date(l.date).toDateString() === todayStr);
     if (!alreadyToday) {
       growGarden(5);
       checkBadge('first_checkin');
@@ -571,11 +583,12 @@ export function AppProvider({ children }) {
 
   // Cập nhật một log cụ thể theo id
   const updateMoodLog = async (id, mood, note, metrics = null, images, options = {}) => {
-    const current = data.moodLogs.find(l => l.id === id);
+    const currentData = dataRef.current;
+    const current = currentData.moodLogs.find(l => l.id === id);
     const currentAttachments = normalizeMoodAttachments(current);
     const nextAttachments = images && images !== null ? normalizeMoodAttachments(Array.isArray(images) ? images : [images]) : [];
     const hasPrivacyOption = Object.prototype.hasOwnProperty.call(options, 'excludeFromAI');
-    const next = data.moodLogs.map(l => {
+    const next = currentData.moodLogs.map(l => {
       if (l.id !== id) return l;
       const base = { ...l, mood, note, metrics, excludeFromAI: hasPrivacyOption ? !!options.excludeFromAI : !!l.excludeFromAI };
       if (images === undefined) return base;
@@ -585,8 +598,7 @@ export function AppProvider({ children }) {
       }
       return { ...base, ...formatImageFields(nextAttachments) };
     });
-    setData(prev => ({ ...prev, moodLogs: next }));
-    if (user?.uid) writeUserCache(user.uid, { ...data, moodLogs: next });
+    commitData({ ...currentData, moodLogs: next });
     if (user) await setDoc(userRef(user.uid), { moodLogs: next }, { merge: true });
     if (images === undefined) return;
     const nextPaths = new Set(nextAttachments.map(attachment => attachment.path).filter(Boolean));
@@ -597,10 +609,10 @@ export function AppProvider({ children }) {
 
   // Xóa một log theo id
   const deleteMoodLog = async (id) => {
-    const current = data.moodLogs.find(l => l.id === id);
-    const next = data.moodLogs.filter(l => l.id !== id);
-    setData(prev => ({ ...prev, moodLogs: next }));
-    if (user?.uid) writeUserCache(user.uid, { ...data, moodLogs: next });
+    const currentData = dataRef.current;
+    const current = currentData.moodLogs.find(l => l.id === id);
+    const next = currentData.moodLogs.filter(l => l.id !== id);
+    commitData({ ...currentData, moodLogs: next });
     if (user) await setDoc(userRef(user.uid), { moodLogs: next }, { merge: true });
     normalizeMoodAttachments(current).forEach(attachment => {
       if (attachment.path) deleteMoodImage(attachment.path);
@@ -608,17 +620,17 @@ export function AppProvider({ children }) {
   };
 
   const toggleMoodLogPinned = async (id) => {
-    const next = data.moodLogs.map(log => (
+    const currentData = dataRef.current;
+    const next = currentData.moodLogs.map(log => (
       log.id === id ? { ...log, pinned: !log.pinned, pinnedAt: !log.pinned ? new Date().toISOString() : null } : log
     ));
-    setData(prev => ({ ...prev, moodLogs: next }));
-    if (user?.uid) writeUserCache(user.uid, { ...data, moodLogs: next });
+    commitData({ ...currentData, moodLogs: next });
     if (user) await setDoc(userRef(user.uid), { moodLogs: next }, { merge: true });
   };
 
   // Giữ lại updateTodayMood để tương thích
   const updateTodayMood = async (mood, note, metrics = null, images) => {
-    const todayLogs = data.moodLogs.filter(l => new Date(l.date).toDateString() === new Date().toDateString());
+    const todayLogs = dataRef.current.moodLogs.filter(l => new Date(l.date).toDateString() === new Date().toDateString());
     if (todayLogs.length === 0) return;
     await updateMoodLog(todayLogs[0].id, mood, note, metrics, images);
   };
