@@ -102,6 +102,97 @@ export default function Layout({ children }) {
 
   return (
     <div className="layout">
+      <aside className="sidebar-nav" aria-label="Điều hướng chính">
+        <Link to="/" className="logo sidebar-logo" onClick={closeMenus}>🧠 <span>MindBuddy</span></Link>
+
+        <nav className="sidebar-main-nav">
+          {PRIMARY_NAV.map(item => (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`nav-link sidebar-link ${location.pathname === item.path ? 'active' : ''}`}
+              onClick={closeMenus}
+            >
+              <span aria-hidden="true">{item.icon}</span>
+              <strong>{item.label}</strong>
+            </Link>
+          ))}
+
+          <Link
+            to={SOS_NAV.path}
+            className={`nav-link sidebar-link sos-link sidebar-sos ${location.pathname === SOS_NAV.path ? 'active' : ''}`}
+            onClick={closeMenus}
+          >
+            <span aria-hidden="true">{SOS_NAV.icon}</span>
+            <strong>{SOS_NAV.label}</strong>
+          </Link>
+
+          <div className={`nav-more sidebar-more ${moreOpen ? 'open' : ''}`}>
+            <button
+              type="button"
+              className={`nav-link sidebar-link nav-more-toggle ${moreActive ? 'active' : ''}`}
+              onClick={() => setMoreOpen(open => !open)}
+              aria-expanded={moreOpen}
+              aria-haspopup="menu"
+            >
+              <span aria-hidden="true">⋯</span>
+              <strong>Thêm</strong>
+            </button>
+            {moreOpen && (
+              <div className="nav-more-menu sidebar-more-menu" role="menu">
+                {MORE_NAV.map(item => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`sidebar-more-item ${location.pathname === item.path ? 'active' : ''}`}
+                    onClick={closeMenus}
+                    role="menuitem"
+                  >
+                    <span className="sidebar-more-icon" aria-hidden="true">{item.icon}</span>
+                    <div>
+                      <strong>{item.label}</strong>
+                      <small>
+                        {item.path === '/daily-review'
+                          ? 'Tóm tắt ngày'
+                          : item.path === '/timeline'
+                            ? 'Trục thời gian'
+                          : item.path === '/profile'
+                            ? 'Mục tiêu và chỉ số'
+                          : item.path === '/counseling'
+                            ? 'Lắng nghe và gỡ rối'
+                          : item.path === '/memories'
+                            ? 'Ảnh, video, âm thanh'
+                            : item.path === '/storage'
+                              ? 'Dọn Firebase'
+                              : item.path === '/good-moments'
+                                ? 'Khoảnh khắc ổn'
+                                : item.path === '/community'
+                                  ? 'Xả lòng, thư tương lai'
+                                  : 'Thói quen và huy hiệu'}
+                      </small>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="sidebar-account-row">
+            <button className="dark-toggle sidebar-dark-toggle" onClick={() => setDarkMode(d => !d)} title="Chế độ tối" aria-label={darkMode ? 'Chuyển sang chế độ sáng' : 'Chuyển sang chế độ tối'}>
+              {darkMode ? '☀️' : '🌙'}
+            </button>
+            <div className="sidebar-user">
+              <span aria-hidden="true">👤</span>
+              <strong>{user?.displayName || user?.email}</strong>
+            </div>
+          </div>
+          <button className="btn btn-secondary header-logout sidebar-logout" onClick={logout}>Đăng xuất</button>
+        </div>
+      </aside>
+
       <header className="header">
         <div className="header-inner">
           <Link to="/" className="logo" onClick={closeMenus}>🧠 <span>MindBuddy</span></Link>
