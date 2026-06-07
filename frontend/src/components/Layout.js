@@ -23,6 +23,8 @@ const MORE_NAV = [
 ];
 
 const SOS_NAV = { path: '/sos', icon: '🆘', label: 'S.O.S' };
+MORE_NAV[0].icon = '📜';
+
 const MOBILE_NAV = [...PRIMARY_NAV, SOS_NAV];
 const ALL_NAV = [...PRIMARY_NAV, ...MORE_NAV, SOS_NAV];
 
