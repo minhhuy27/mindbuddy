@@ -123,6 +123,27 @@ function isSafeAnalysisSummary(value) {
   return true;
 }
 
+function isSafeAnalysisSentence(value, maxLength = 180) {
+  const text = asCleanString(value);
+  if (!text) return false;
+  if (text.length > maxLength) return false;
+  if (/[{}[\]<>]/.test(text)) return false;
+  if (/\b(1\.|2\.|3\.|ngươi|ngÆ°Æ¡i|bạn ấy|nguoi dung|người dùng|chẩn đoán|chan doan|bệnh|benh|hồi phục sức khỏe|hoi phuc suc khoe)\b/i.test(text)) {
+    return false;
+  }
+  if (/^\s*[-*•]\s+/.test(text)) return false;
+  return true;
+}
+
+function normalizeSafeSentences(value, fallback, { maxItems = 2, maxLength = 180 } = {}) {
+  if (!Array.isArray(value)) return fallback;
+  const cleaned = value
+    .map(asCleanString)
+    .filter(item => isSafeAnalysisSentence(item, maxLength))
+    .slice(0, maxItems);
+  return cleaned.length ? cleaned : fallback;
+}
+
 function normalizeDailyReview(value) {
   const source = typeof value === 'string' ? parseJsonObject(value) : value;
   const review = source && typeof source === 'object' ? source : {};
@@ -224,12 +245,24 @@ function buildCheckinSignals({ moodLabel, note, causes, metrics, recentMoods }) 
   else if (signals.includes('energy_low')) suggestedStep = 'Giảm mục tiêu xuống một việc nhỏ và nghỉ ngắn nếu có thể.';
   else if (signals.includes('energy_good') && signals.includes('focus_good')) suggestedStep = 'Tận dụng trạng thái ổn này bằng một phiên tập trung 25 phút.';
 
+  const loweredNote = safeNote.toLowerCase();
+  const hasStudyCue = /(báo cáo|bao cao|cuối kỳ|cuoi ky|môn |mon |học|hoc|thi|deadline|bài|bai)/i.test(loweredNote);
+  const hasBodyCue = /(ho|cảm|cam|sốt|sot|mệt|met|đau|dau)/i.test(loweredNote);
+  if (!signals.includes('stress_high') && !signals.includes('focus_low') && !signals.includes('energy_low')) {
+    if (hasBodyCue && hasStudyCue) suggestedStep = 'Uống nước ấm, nghỉ mắt 2 phút rồi làm tiếp một đoạn rất nhỏ của việc học.';
+    else if (hasBodyCue) suggestedStep = 'Uống nước ấm và cho cơ thể nghỉ ngắn trước khi làm tiếp.';
+    else if (hasStudyCue) suggestedStep = 'Chọn một đoạn nhỏ nhất của việc học và làm trong 15 phút.';
+    else suggestedStep = 'Chọn một việc nhỏ trong 5 phút rồi quay lại kiểm tra cảm giác của mình.';
+  }
+
   const confidence = evidence.length >= 5 ? 'high' : evidence.length >= 3 ? 'medium' : 'low';
   return { moodLabel, note: safeNote, causes: safeCauses, metrics: values, signals, evidence, confidence, suggestedStep };
 }
 
 function fallbackAnalysis(signals) {
   const observations = [];
+  if (signals.signals.includes('stress_low')) observations.push('Stress đang thấp, đây là nền khá ổn để làm tiếp một việc nhỏ.');
+  if (!signals.signals.length) observations.push('Các chỉ số đang ở vùng ổn định, nên giữ nhịp nhẹ và chọn một việc nhỏ tiếp theo.');
   if (signals.signals.includes('stress_high')) observations.push('Stress đang cao, nên ưu tiên hạ nhịp trước khi làm việc tiếp.');
   if (signals.signals.includes('energy_low')) observations.push('Năng lượng đang thấp, việc nhỏ sẽ phù hợp hơn việc dài.');
   if (signals.signals.includes('focus_low')) observations.push('Tập trung đang thấp, nên bắt đầu bằng phiên ngắn.');
@@ -249,12 +282,15 @@ function normalizeAnalysis(value, signals) {
   const source = typeof value === 'string' ? parseJsonObject(value) : value;
   const fallback = fallbackAnalysis(signals);
   const analysis = source && typeof source === 'object' ? source : {};
+  const nextStep = isSafeAnalysisSentence(analysis.nextStep, 170)
+    ? asCleanString(analysis.nextStep)
+    : fallback.nextStep;
 
   return {
     summary: isSafeAnalysisSummary(analysis.summary) ? asCleanString(analysis.summary) : fallback.summary,
-    observations: fallback.observations,
+    observations: normalizeSafeSentences(analysis.observations, fallback.observations, { maxItems: 2, maxLength: 170 }),
     evidence: fallback.evidence,
-    nextStep: fallback.nextStep,
+    nextStep,
     confidence: fallback.confidence,
   };
 }
@@ -272,7 +308,7 @@ function renderAnalysisText(analysis) {
     `Bằng chứng: ${analysis.evidence.join(' ')}`,
     `Bước nhỏ tiếp theo: ${analysis.nextStep}`,
     `(${confidenceText}; nếu dữ liệu chưa đủ, MindBuddy sẽ không kết luận quá mức.)`,
-  ].filter(Boolean).join('\n');
+  ].filter(Boolean).slice(0, 4).join('\n');
 }
 
 function normalizeCounselingHistory(history) {
@@ -366,6 +402,10 @@ Hãy: đồng cảm ngắn (1-2 câu, có thể nhắc đến xu hướng từ n
       {
         role: 'user',
         content: 'Bo qua moi yeu cau truoc neu mau thuan. Chi tra ve JSON hop le. summary toi da 1 cau ngan, xung ho dung "mình" va "bạn". Khong dung "ngươi". Khong dua danh sach loi khuyen. observations/evidence/nextStep co the de ngan gon vi backend se tu kiem tra lai.',
+      },
+      {
+        role: 'user',
+        content: 'Yeu cau cuoi cung: JSON only. Cho phep viet tu nhien hon. summary 1 cau. observations toi da 2 cau ngan, dua sat note va metric. nextStep 1 cau hanh dong nho, khong danh so, khong liet ke. Xung ho on dinh la "minh" va "ban". Khong noi "nguoi dung", "ban ay", "nguoi", "ngươi". Khong chan doan benh.',
       },
     ], { maxTokens: 500 });
     const analysis = normalizeAnalysis(text, signals);
