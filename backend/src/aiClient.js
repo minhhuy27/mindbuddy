@@ -10,6 +10,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const GROQ_MODEL   = 'qwen/qwen3-32b';
 const GEMINI_MODEL = 'gemini-2.5-flash';
+const OPENAI_ANALYZE_MODEL = process.env.OPENAI_ANALYZE_MODEL || 'gpt-5.4-mini';
 
 // Xóa phần <think>...</think> mà Qwen3 sinh ra
 function stripThinking(text) {
@@ -36,6 +37,64 @@ function stripMarkdown(text) {
 
 function cleanResponse(text) {
   return stripMarkdown(stripThinking(text));
+}
+
+async function callOpenAI(messages, { maxTokens, json = false } = {}) {
+  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set');
+
+  const body = {
+    model: OPENAI_ANALYZE_MODEL,
+    messages,
+    temperature: 0.2,
+  };
+  if (maxTokens) body.max_completion_tokens = maxTokens;
+  if (json) body.response_format = { type: 'json_object' };
+
+  const postOpenAI = (requestBody) => fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  let response = await postOpenAI(body);
+
+  if (!response.ok) {
+    let errorText = await response.text();
+    if (/temperature/i.test(errorText) && body.temperature !== undefined) {
+      const retryBody = { ...body };
+      delete retryBody.temperature;
+      response = await postOpenAI(retryBody);
+      if (response.ok) {
+        const data = await response.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (!text) throw new Error('OpenAI returned empty response');
+        return cleanResponse(text);
+      }
+      errorText = await response.text();
+    }
+    if (/max_completion_tokens|max_tokens/i.test(errorText) && body.max_completion_tokens !== undefined) {
+      const retryBody = { ...body, max_tokens: body.max_completion_tokens };
+      delete retryBody.max_completion_tokens;
+      delete retryBody.temperature;
+      response = await postOpenAI(retryBody);
+      if (response.ok) {
+        const data = await response.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (!text) throw new Error('OpenAI returned empty response');
+        return cleanResponse(text);
+      }
+      errorText = await response.text();
+    }
+    throw new Error(`OpenAI ${response.status}: ${errorText.slice(0, 300)}`);
+  }
+
+  const data = await response.json();
+  const text = data.choices?.[0]?.message?.content;
+  if (!text) throw new Error('OpenAI returned empty response');
+  return cleanResponse(text);
 }
 
 // ── Groq call ──────────────────────────────────────────────────────────────
@@ -114,6 +173,19 @@ async function chat(messages, { maxTokens } = {}) {
 }
 
 // ── Hàm dùng Gemini trực tiếp (cho tác vụ phân tích sâu), fallback Groq ──
+async function chatAnalyze(messages, { maxTokens } = {}) {
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const text = await callOpenAI(messages, { maxTokens, json: true });
+      return { text, provider: 'openai', model: OPENAI_ANALYZE_MODEL };
+    } catch (openaiErr) {
+      console.warn(`[AI] OpenAI analyze failed (${openaiErr.message}), falling back to Groq...`);
+    }
+  }
+
+  return chat(messages, { maxTokens });
+}
+
 async function chatGemini(messages, { maxTokens } = {}) {
   if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_gemini_api_key_here') {
     console.warn('[AI] Gemini key not configured, using Groq instead...');
@@ -139,4 +211,4 @@ async function chatGemini(messages, { maxTokens } = {}) {
   }
 }
 
-module.exports = { chat, chatGemini, stripThinking };
+module.exports = { chat, chatAnalyze, chatGemini, stripThinking };

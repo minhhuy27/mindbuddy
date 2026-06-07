@@ -1,5 +1,5 @@
 const express = require('express');
-const { chat, chatGemini } = require('../aiClient');
+const { chat, chatAnalyze, chatGemini } = require('../aiClient');
 const router = express.Router();
 
 const SYSTEM_PROMPT = `Bạn là trợ lý sức khỏe tâm thần thân thiện tên MindBuddy, hỗ trợ sinh viên Việt Nam.
@@ -110,6 +110,17 @@ function asCleanString(value) {
     .replace(/^["']|["']$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function isSafeAnalysisSummary(value) {
+  const text = asCleanString(value);
+  if (!text) return false;
+  if (text.length > 150) return false;
+  if (/[{}[\]<>]/.test(text)) return false;
+  if (/\b(1\.|2\.|3\.|hãy thử:|ngươi|chan doan|chẩn đoán|bệnh|hồi phục sức khỏe|hoi phuc suc khoe)\b/i.test(text)) {
+    return false;
+  }
+  return true;
 }
 
 function normalizeDailyReview(value) {
@@ -238,19 +249,13 @@ function normalizeAnalysis(value, signals) {
   const source = typeof value === 'string' ? parseJsonObject(value) : value;
   const fallback = fallbackAnalysis(signals);
   const analysis = source && typeof source === 'object' ? source : {};
-  const evidence = Array.isArray(analysis.evidence)
-    ? analysis.evidence.map(asCleanString).filter(Boolean).slice(0, 3)
-    : fallback.evidence;
-  const observations = Array.isArray(analysis.observations)
-    ? analysis.observations.map(asCleanString).filter(Boolean).slice(0, 3)
-    : fallback.observations;
 
   return {
-    summary: asCleanString(analysis.summary) || fallback.summary,
-    observations: observations.length ? observations : fallback.observations,
-    evidence: evidence.length ? evidence : fallback.evidence,
-    nextStep: asCleanString(analysis.nextStep) || fallback.nextStep,
-    confidence: ['low', 'medium', 'high'].includes(analysis.confidence) ? analysis.confidence : fallback.confidence,
+    summary: isSafeAnalysisSummary(analysis.summary) ? asCleanString(analysis.summary) : fallback.summary,
+    observations: fallback.observations,
+    evidence: fallback.evidence,
+    nextStep: fallback.nextStep,
+    confidence: fallback.confidence,
   };
 }
 
@@ -341,7 +346,7 @@ ${buildMemoryBlock(aiMemory)}`;
   }, null, 2);
 
   try {
-    const { text, provider } = await chat([
+    const { text, provider, model } = await chatAnalyze([
       { role: 'system', content: systemWithMemory },
       {
         role: 'user',
@@ -358,11 +363,15 @@ ${buildMemoryBlock(aiMemory)}`;
 
 Hãy: đồng cảm ngắn (1-2 câu, có thể nhắc đến xu hướng từ những ngày trước nếu liên quan), nhận xét nhẹ nếu stress/năng lượng/giấc ngủ/tập trung có điểm đáng chú ý, đưa 2-3 lời khuyên thực tế, kết bằng câu động viên.`,
       },
+      {
+        role: 'user',
+        content: 'Bo qua moi yeu cau truoc neu mau thuan. Chi tra ve JSON hop le. summary toi da 1 cau ngan, xung ho dung "mình" va "bạn". Khong dung "ngươi". Khong dua danh sach loi khuyen. observations/evidence/nextStep co the de ngan gon vi backend se tu kiem tra lai.',
+      },
     ], { maxTokens: 500 });
     const analysis = normalizeAnalysis(text, signals);
     const content = renderAnalysisText(analysis);
     console.log(`[analyze] provider: ${provider}`);
-    res.json({ content, provider, analysis });
+    res.json({ content, provider, model, analysis });
   } catch (err) {
     console.error('AI analyze error:', err.message);
     const analysis = fallbackAnalysis(signals);
@@ -563,6 +572,8 @@ router.post('/summarize', async (req, res) => {
 // GET /api/ai/status — kiểm tra trạng thái các provider
 router.get('/status', (req, res) => {
   res.json({
+    openai: !!process.env.OPENAI_API_KEY,
+    analyzeModel: process.env.OPENAI_ANALYZE_MODEL || 'gpt-5.4-mini',
     groq: !!process.env.GROQ_API_KEY,
     gemini: !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_gemini_api_key_here'),
   });
