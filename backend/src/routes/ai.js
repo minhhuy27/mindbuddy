@@ -151,6 +151,125 @@ function buildMemoryBlock(aiMemory) {
   return `\n\n=== LỊCH SỬ CẢM XÚC GẦN ĐÂY CỦA NGƯỜI DÙNG ===\n${lines}\n(Hãy tham chiếu lịch sử này khi phù hợp để phản hồi có chiều sâu hơn.)`;
 }
 
+function clampMetric(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(5, Math.max(1, number)) : null;
+}
+
+function buildCheckinSignals({ moodLabel, note, causes, metrics, recentMoods }) {
+  const safeCauses = Array.isArray(causes) ? causes.map(item => String(item).trim()).filter(Boolean) : [];
+  const safeNote = String(note || '').trim();
+  const values = {
+    stress: clampMetric(metrics?.stress),
+    energy: clampMetric(metrics?.energy),
+    sleep: clampMetric(metrics?.sleep),
+    focus: clampMetric(metrics?.focus),
+  };
+
+  const signals = [];
+  const evidence = [`Cảm xúc bạn chọn: ${moodLabel}.`];
+  if (safeCauses.length) evidence.push(`Nguyên nhân đã chọn: ${safeCauses.join(', ')}.`);
+  if (safeNote) evidence.push(`Ghi chú của bạn: "${safeNote.slice(0, 180)}${safeNote.length > 180 ? '...' : ''}".`);
+
+  if (values.stress !== null) {
+    evidence.push(`Stress: ${values.stress}/5.`);
+    if (values.stress >= 4) signals.push('stress_high');
+    if (values.stress <= 2) signals.push('stress_low');
+  }
+  if (values.energy !== null) {
+    evidence.push(`Năng lượng: ${values.energy}/5.`);
+    if (values.energy <= 2) signals.push('energy_low');
+    if (values.energy >= 4) signals.push('energy_good');
+  }
+  if (values.sleep !== null) {
+    evidence.push(`Giấc ngủ: ${values.sleep}/5.`);
+    if (values.sleep <= 2) signals.push('sleep_low');
+    if (values.sleep >= 4) signals.push('sleep_good');
+  }
+  if (values.focus !== null) {
+    evidence.push(`Tập trung: ${values.focus}/5.`);
+    if (values.focus <= 2) signals.push('focus_low');
+    if (values.focus >= 4) signals.push('focus_good');
+  }
+
+  const recentLabels = Array.isArray(recentMoods)
+    ? recentMoods.map(item => item?.label).filter(Boolean).slice(0, 7)
+    : [];
+  if (recentLabels.length >= 3) {
+    const counts = recentLabels.reduce((acc, label) => {
+      acc[label] = (acc[label] || 0) + 1;
+      return acc;
+    }, {});
+    const [topLabel, topCount] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0] || [];
+    if (topLabel && topCount >= 3) {
+      signals.push('repeated_recent_mood');
+      evidence.push(`Gần đây lặp lại cảm xúc "${topLabel}" ${topCount}/${recentLabels.length} lần.`);
+    }
+  }
+
+  let suggestedStep = 'Chọn một việc nhỏ trong 5 phút: uống nước, đứng dậy đi lại, hoặc ghi thêm một dòng ngắn.';
+  if (signals.includes('stress_high')) suggestedStep = 'Thử hạ nhịp 2 phút bằng thở chậm trước khi tiếp tục.';
+  else if (signals.includes('focus_low')) suggestedStep = 'Thử một Pomodoro nhẹ 15 phút với một việc thật nhỏ.';
+  else if (signals.includes('energy_low')) suggestedStep = 'Giảm mục tiêu xuống một việc nhỏ và nghỉ ngắn nếu có thể.';
+  else if (signals.includes('energy_good') && signals.includes('focus_good')) suggestedStep = 'Tận dụng trạng thái ổn này bằng một phiên tập trung 25 phút.';
+
+  const confidence = evidence.length >= 5 ? 'high' : evidence.length >= 3 ? 'medium' : 'low';
+  return { moodLabel, note: safeNote, causes: safeCauses, metrics: values, signals, evidence, confidence, suggestedStep };
+}
+
+function fallbackAnalysis(signals) {
+  const observations = [];
+  if (signals.signals.includes('stress_high')) observations.push('Stress đang cao, nên ưu tiên hạ nhịp trước khi làm việc tiếp.');
+  if (signals.signals.includes('energy_low')) observations.push('Năng lượng đang thấp, việc nhỏ sẽ phù hợp hơn việc dài.');
+  if (signals.signals.includes('focus_low')) observations.push('Tập trung đang thấp, nên bắt đầu bằng phiên ngắn.');
+  if (signals.signals.includes('sleep_low')) observations.push('Giấc ngủ thấp có thể làm hôm nay khó vào nhịp hơn.');
+  if (!observations.length) observations.push('Check-in đã được ghi nhận, chưa có dấu hiệu nào quá nổi bật từ chỉ số.');
+
+  return {
+    summary: `Mình ghi nhận hôm nay bạn đang ở trạng thái ${signals.moodLabel}.`,
+    observations,
+    evidence: signals.evidence.slice(0, 4),
+    nextStep: signals.suggestedStep,
+    confidence: signals.confidence,
+  };
+}
+
+function normalizeAnalysis(value, signals) {
+  const source = typeof value === 'string' ? parseJsonObject(value) : value;
+  const fallback = fallbackAnalysis(signals);
+  const analysis = source && typeof source === 'object' ? source : {};
+  const evidence = Array.isArray(analysis.evidence)
+    ? analysis.evidence.map(asCleanString).filter(Boolean).slice(0, 3)
+    : fallback.evidence;
+  const observations = Array.isArray(analysis.observations)
+    ? analysis.observations.map(asCleanString).filter(Boolean).slice(0, 3)
+    : fallback.observations;
+
+  return {
+    summary: asCleanString(analysis.summary) || fallback.summary,
+    observations: observations.length ? observations : fallback.observations,
+    evidence: evidence.length ? evidence : fallback.evidence,
+    nextStep: asCleanString(analysis.nextStep) || fallback.nextStep,
+    confidence: ['low', 'medium', 'high'].includes(analysis.confidence) ? analysis.confidence : fallback.confidence,
+  };
+}
+
+function renderAnalysisText(analysis) {
+  const confidenceText = {
+    low: 'độ chắc thấp',
+    medium: 'độ chắc vừa',
+    high: 'độ chắc cao',
+  }[analysis.confidence] || 'độ chắc vừa';
+
+  return [
+    analysis.summary,
+    `Mình thấy: ${analysis.observations.join(' ')}`,
+    `Bằng chứng: ${analysis.evidence.join(' ')}`,
+    `Bước nhỏ tiếp theo: ${analysis.nextStep}`,
+    `(${confidenceText}; nếu dữ liệu chưa đủ, MindBuddy sẽ không kết luận quá mức.)`,
+  ].filter(Boolean).join('\n');
+}
+
 function normalizeCounselingHistory(history) {
   if (!Array.isArray(history)) return [];
   const normalized = history
@@ -184,18 +303,50 @@ function buildCounselingContextBlock(journalContext) {
 
 // POST /api/ai/analyze — phân tích cảm xúc sau check-in
 router.post('/analyze', async (req, res) => {
-  const { moodLabel, note, causes, metrics, recentMoods, aiMemory } = req.body;
+  const { moodLabel, note, causes, metrics, recentMoods, aiMemory, userGoal } = req.body;
   if (!moodLabel) return res.status(400).json({ error: 'moodLabel is required' });
+  const signals = buildCheckinSignals({ moodLabel, note, causes, metrics, recentMoods });
 
   const recentSummary = recentMoods?.length > 0
     ? `Cảm xúc 7 ngày gần đây: ${recentMoods.map(m => m.label).join(', ')}.`
     : '';
 
-  const systemWithMemory = SYSTEM_PROMPT + buildMemoryBlock(aiMemory);
+  const systemWithMemory = `Ban la MindBuddy, tro ly nhat ky suc khoe tinh than. Hay giu phan tich sau check-in that ngan, dua sat du lieu, khong chan doan va khong suy dien qua muc.
+Quy tac bat buoc:
+- Chi noi dieu co can cu tu tin hieu, chi so hoac ghi chu duoc cung cap.
+- Neu khong du bang chung, noi ro la chua du du lieu thay vi ket luan.
+- Khong viet qua trinh suy nghi, khong dung Markdown, khong dung the <think>.
+- Tra ve JSON hop le duy nhat, khong co chu nao ngoai JSON.
+JSON gom dung cac khoa:
+{
+  "summary": "1 cau ghi nhan cam xuc hien tai",
+  "observations": ["1-3 nhan xet ngan dua tren tin hieu"],
+  "evidence": ["1-3 bang chung cu the tu du lieu"],
+  "nextStep": "1 buoc nho co the lam ngay",
+  "confidence": "low|medium|high"
+}
+${buildMemoryBlock(aiMemory)}`;
+
+  const signalPayload = JSON.stringify({
+    moodLabel,
+    causes: signals.causes,
+    metrics: signals.metrics,
+    note: signals.note,
+    recentMoods: Array.isArray(recentMoods) ? recentMoods.slice(0, 7).map(item => item?.label).filter(Boolean) : [],
+    userGoal: userGoal || '',
+    ruleSignals: signals.signals,
+    ruleEvidence: signals.evidence,
+    suggestedStep: signals.suggestedStep,
+    confidenceHint: signals.confidence,
+  }, null, 2);
 
   try {
     const { text, provider } = await chat([
       { role: 'system', content: systemWithMemory },
+      {
+        role: 'user',
+        content: `Du lieu da duoc backend rut trich de phan tich:\n${signalPayload}\nHay bam sat du lieu nay va tra ve JSON dung schema. Neu khong du bang chung, dat confidence la "low".`,
+      },
       {
         role: 'user',
         content: `Tôi vừa ghi cảm xúc:
@@ -207,12 +358,15 @@ router.post('/analyze', async (req, res) => {
 
 Hãy: đồng cảm ngắn (1-2 câu, có thể nhắc đến xu hướng từ những ngày trước nếu liên quan), nhận xét nhẹ nếu stress/năng lượng/giấc ngủ/tập trung có điểm đáng chú ý, đưa 2-3 lời khuyên thực tế, kết bằng câu động viên.`,
       },
-    ]);
+    ], { maxTokens: 500 });
+    const analysis = normalizeAnalysis(text, signals);
+    const content = renderAnalysisText(analysis);
     console.log(`[analyze] provider: ${provider}`);
-    res.json({ content: text, provider });
+    res.json({ content, provider, analysis });
   } catch (err) {
     console.error('AI analyze error:', err.message);
-    res.status(500).json({ error: 'AI service error' });
+    const analysis = fallbackAnalysis(signals);
+    res.json({ content: renderAnalysisText(analysis), provider: 'rule-fallback', analysis });
   }
 });
 

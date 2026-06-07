@@ -5,7 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { format, isToday, isYesterday, subDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { analyzeMood, createChat, detectDanger, summarizeDay } from '../utils/aiService';
-import { exportMoodPDF, exportAllMoodPDF } from '../utils/exportPDF';
+import { exportMoodPDF as exportMoodPDFBase, exportAllMoodPDF as exportAllMoodPDFBase } from '../utils/exportPDF';
 import { uploadMoodFiles } from '../utils/imageUpload';
 import { displayAttachmentName, normalizeMoodAttachments } from '../utils/moodImages';
 import CrisisPanel from '../components/CrisisPanel';
@@ -401,7 +401,19 @@ export default function MoodTracker() {
   const now = new Date();
   const [exportMonth, setExportMonth] = useState(now.getMonth());
   const [exportYear, setExportYear] = useState(now.getFullYear());
+  const [exportOptions, setExportOptions] = useState({
+    privacy: 'all',
+    range: 'selected',
+    detail: 'full',
+    includeImages: true,
+  });
   const [exporting, setExporting] = useState(false); // 'month' | 'all' | false
+  const exportMoodPDF = React.useCallback((payload) => (
+    exportMoodPDFBase({ ...payload, options: exportOptions })
+  ), [exportOptions]);
+  const exportAllMoodPDF = React.useCallback((payload) => (
+    exportAllMoodPDFBase({ ...payload, options: exportOptions })
+  ), [exportOptions]);
   const [historyRange, setHistoryRange] = useState(14);
   const [historyFilters, setHistoryFilters] = useState({
     search: '',
@@ -2240,6 +2252,52 @@ export default function MoodTracker() {
               <div>
                 <h3>Xuất nhật ký cảm xúc</h3>
                 <p className="text-muted">Tạo file PDF để lưu lại hoặc đọc lại ngoài MindBuddy.</p>
+              </div>
+              <div className="export-filters-panel">
+                <div className="export-filters-head">
+                  <h4>Tùy chọn xuất</h4>
+                  <p className="text-muted">Chọn phạm vi và mức chi tiết trước khi tạo PDF.</p>
+                </div>
+                <div className="export-filter-grid">
+                  <label>
+                    <span>Riêng tư</span>
+                    <select
+                      value={exportOptions.privacy}
+                      onChange={e => setExportOptions(prev => ({ ...prev, privacy: e.target.value }))}
+                    >
+                      <option value="all">Xuất tất cả note</option>
+                      <option value="nonPrivate">Chỉ note không riêng tư AI</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Thời gian</span>
+                    <select
+                      value={exportOptions.range}
+                      onChange={e => setExportOptions(prev => ({ ...prev, range: e.target.value }))}
+                    >
+                      <option value="selected">Theo lựa chọn bên dưới</option>
+                      <option value="currentMonth">Chỉ tháng này</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Nội dung</span>
+                    <select
+                      value={exportOptions.detail}
+                      onChange={e => setExportOptions(prev => ({ ...prev, detail: e.target.value }))}
+                    >
+                      <option value="full">Mood, chỉ số và nội dung note</option>
+                      <option value="metricsOnly">Chỉ mood + chỉ số</option>
+                    </select>
+                  </label>
+                  <label className="export-check-option">
+                    <input
+                      type="checkbox"
+                      checked={exportOptions.includeImages}
+                      onChange={e => setExportOptions(prev => ({ ...prev, includeImages: e.target.checked }))}
+                    />
+                    <span>Xuất kèm ảnh</span>
+                  </label>
+                </div>
               </div>
               <div className="export-panel-grid">
                 <div className="export-option">

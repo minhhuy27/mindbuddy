@@ -16,6 +16,75 @@ const THUMBNAIL_HEIGHT = 540;
 const IMAGE_LOAD_TIMEOUT_MS = 8000;
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 const thumbnailCache = new Map();
+const DEFAULT_EXPORT_OPTIONS = {
+  privacy: 'all',
+  range: 'selected',
+  detail: 'full',
+  includeImages: true,
+};
+
+function normalizeExportOptions(options = {}) {
+  return {
+    ...DEFAULT_EXPORT_OPTIONS,
+    ...(options || {}),
+  };
+}
+
+function currentMonthRange() {
+  const now = new Date();
+  return {
+    month: now.getMonth(),
+    year: now.getFullYear(),
+  };
+}
+
+function applyExportOptions(logs = [], options = {}) {
+  const normalized = normalizeExportOptions(options);
+  const monthRange = currentMonthRange();
+  return logs.filter(log => {
+    if (normalized.privacy === 'nonPrivate' && log.excludeFromAI) return false;
+    if (normalized.range === 'currentMonth') {
+      const date = new Date(log.date);
+      if (date.getMonth() !== monthRange.month || date.getFullYear() !== monthRange.year) return false;
+    }
+    return true;
+  });
+}
+
+function stripMediaFields(log = {}) {
+  const {
+    attachments: _attachments,
+    images: _images,
+    image: _image,
+    imageUrl: _imageUrl,
+    imagePath: _imagePath,
+    ...rest
+  } = log;
+  return rest;
+}
+
+function stripImageFields(log = {}) {
+  const attachments = normalizeMoodAttachments(log).filter(item => item.kind !== 'image');
+  if (!attachments.length) return stripMediaFields(log);
+  return {
+    ...log,
+    attachments,
+    images: [],
+    image: null,
+    imageUrl: '',
+    imagePath: '',
+  };
+}
+
+function sanitizeLogsForExport(logs = [], options = {}) {
+  const normalized = normalizeExportOptions(options);
+  return applyExportOptions(logs, normalized).map(log => {
+    const withoutPrivateNote = normalized.detail === 'metricsOnly'
+      ? { ...log, note: '' }
+      : log;
+    return normalized.includeImages ? withoutPrivateNote : stripImageFields(withoutPrivateNote);
+  });
+}
 
 function escapeHtml(value = '') {
   return String(value)
@@ -165,22 +234,23 @@ function moodDistribution(stats, allMoods) {
     .sort((a, b) => b.count - a.count);
 }
 
-function estimateLogHeight(log) {
-  const noteLength = cleanNote(log.note || '').length;
-  const causes = extractCauses(log.note || '').length;
+function estimateLogHeight(log, options = {}) {
+  const normalized = normalizeExportOptions(options);
+  const noteLength = normalized.detail === 'metricsOnly' ? 0 : cleanNote(log.note || '').length;
+  const causes = normalized.detail === 'metricsOnly' ? 0 : extractCauses(log.note || '').length;
   const metrics = metricLine(log.metrics || '') ? 1 : 0;
-  const media = attachmentLine(log) ? 1 : 0;
-  const blocks = cleanNote(log.note || '').split(/\r?\n/).length;
+  const media = normalized.includeImages && attachmentLine(log) ? 1 : 0;
+  const blocks = normalized.detail === 'metricsOnly' ? 0 : cleanNote(log.note || '').split(/\r?\n/).length;
   return Math.min(240, 40 + Math.ceil(noteLength / 110) * 13 + blocks * 5 + causes * 3 + (metrics + media) * 10);
 }
 
-function paginateLogs(logs) {
+function paginateLogs(logs, options = {}) {
   const pages = [];
   let current = [];
   let used = 0;
 
   logs.forEach(log => {
-    const height = Math.min(260, estimateLogHeight(log));
+    const height = Math.min(260, estimateLogHeight(log, options));
     if (current.length && used + height > PAGE_BODY_CAPACITY) {
       pages.push(current);
       current = [];
@@ -460,12 +530,15 @@ function renderCoverBody({ stats, distribution, statItems, intro }) {
   `;
 }
 
-async function buildDocument({ title, subtitle, userName, logs, allMoods, statItems, intro, periodDays }) {
-  const sortedLogs = [...logs].sort((a, b) => new Date(b.date) - new Date(a.date));
+async function buildDocument({ title, subtitle, userName, logs, allMoods, statItems, intro, periodDays, options = {} }) {
+  const exportOptions = normalizeExportOptions(options);
+  const sortedLogs = sanitizeLogsForExport(logs, exportOptions).sort((a, b) => new Date(b.date) - new Date(a.date));
   const stats = buildStats(sortedLogs, allMoods, periodDays);
   const distribution = moodDistribution(stats, allMoods);
-  const logPages = paginateLogs(sortedLogs);
-  const imageAttachments = await prepareImageAttachments(collectImageAttachments(sortedLogs, allMoods));
+  const logPages = paginateLogs(sortedLogs, exportOptions);
+  const imageAttachments = exportOptions.includeImages
+    ? await prepareImageAttachments(collectImageAttachments(sortedLogs, allMoods))
+    : [];
   const imagePages = paginateImages(imageAttachments);
   const totalPages = sortedLogs.length ? 1 + logPages.length + imagePages.length : 2;
 
@@ -520,20 +593,22 @@ async function buildDocument({ title, subtitle, userName, logs, allMoods, statIt
   return { html: pages.join(''), images: imageAttachments };
 }
 
-async function buildMonthDocument({ userName, moodLogs, month, year, allMoods }) {
+async function buildMonthDocument({ userName, moodLogs, month, year, allMoods, options = {} }) {
   const end = endOfMonth(new Date(year, month, 1));
   const logs = moodLogs.filter(log => {
     const date = new Date(log.date);
     return date.getMonth() === month && date.getFullYear() === year;
   });
-  const stats = buildStats(logs, allMoods, end.getDate());
+  const exportLogs = sanitizeLogsForExport(logs, options);
+  const stats = buildStats(exportLogs, allMoods, end.getDate());
   const monthLabel = `Tháng ${month + 1}/${year}`;
   return await buildDocument({
     title: `Báo cáo cảm xúc ${monthLabel}`,
     subtitle: monthLabel,
     userName,
-    logs,
+    logs: exportLogs,
     allMoods,
+    options,
     periodDays: end.getDate(),
     intro: `Bản xuất này gom các check-in trong ${monthLabel}, kèm điểm mood, nguyên nhân, chỉ số phụ và số tệp đa phương tiện đã lưu.`,
     statItems: [
@@ -547,11 +622,12 @@ async function buildMonthDocument({ userName, moodLogs, month, year, allMoods })
   });
 }
 
-async function buildAllDocument({ userName, moodLogs, allMoods }) {
+async function buildAllDocument({ userName, moodLogs, allMoods, options = {} }) {
   if (!moodLogs.length) return null;
-  const sortedLogs = [...moodLogs].sort((a, b) => new Date(a.date) - new Date(b.date));
-  const firstDate = new Date(sortedLogs[0].date);
-  const lastDate = new Date(sortedLogs[sortedLogs.length - 1].date);
+  const exportLogs = sanitizeLogsForExport(moodLogs, options);
+  const sortedLogs = [...exportLogs].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const firstDate = sortedLogs.length ? new Date(sortedLogs[0].date) : new Date();
+  const lastDate = sortedLogs.length ? new Date(sortedLogs[sortedLogs.length - 1].date) : new Date();
   const months = new Set(sortedLogs.map(log => {
     const date = new Date(log.date);
     return `${date.getFullYear()}-${date.getMonth()}`;
@@ -564,6 +640,7 @@ async function buildAllDocument({ userName, moodLogs, allMoods }) {
     userName,
     logs: sortedLogs,
     allMoods,
+    options,
     intro: 'Bản xuất này tổng hợp toàn bộ lịch sử check-in của bạn theo định dạng đọc được, có phân trang và tóm tắt riêng.',
     statItems: [
       { label: 'Tổng ghi chú', value: `${stats.totalEntries}` },
@@ -825,13 +902,13 @@ async function renderToPDF(documentHtml, filename) {
   }
 }
 
-export async function exportMoodPDF({ userName, moodLogs, month, year, allMoods }) {
-  const documentData = await buildMonthDocument({ userName, moodLogs, month, year, allMoods });
+export async function exportMoodPDF({ userName, moodLogs, month, year, allMoods, options = {} }) {
+  const documentData = await buildMonthDocument({ userName, moodLogs, month, year, allMoods, options });
   await renderToPDF(documentData.html, `MindBuddy_T${month + 1}-${year}.pdf`);
 }
 
-export async function exportAllMoodPDF({ userName, moodLogs, allMoods }) {
-  const documentData = await buildAllDocument({ userName, moodLogs, allMoods });
+export async function exportAllMoodPDF({ userName, moodLogs, allMoods, options = {} }) {
+  const documentData = await buildAllDocument({ userName, moodLogs, allMoods, options });
   if (!documentData) return;
   await renderToPDF(documentData.html, `MindBuddy_ToanBo_${format(new Date(), 'ddMMyyyy')}.pdf`);
 }
