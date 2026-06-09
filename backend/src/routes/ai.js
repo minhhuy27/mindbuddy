@@ -296,21 +296,22 @@ function normalizeAnalysis(value, signals) {
 }
 
 function renderAnalysisText(analysis) {
-  const confidenceText = {
-    low: 'độ chắc thấp',
-    medium: 'độ chắc vừa',
-    high: 'độ chắc cao',
-  }[analysis.confidence] || 'độ chắc vừa';
+  const metricTerms = ['stress', 'nang luong', 'năng lượng', 'giac ngu', 'giấc ngủ', 'tap trung', 'tập trung'];
+  const visibleObservations = (analysis.observations || [])
+    .map(asCleanString)
+    .filter(Boolean)
+    .filter((item) => !/[1-5]\s*\/\s*5/.test(item))
+    .filter((item) => !metricTerms.some((term) => item.toLowerCase().includes(term)));
+  const observationText = visibleObservations.length
+    ? visibleObservations.join(' ')
+    : 'Mình thấy nhịp hiện tại khá ổn, chỉ cần giữ một bước nhỏ và nhẹ.';
 
   return [
     analysis.summary,
-    `Mình thấy: ${analysis.observations.join(' ')}`,
-    `Bằng chứng: ${analysis.evidence.join(' ')}`,
+    `Mình thấy: ${observationText}`,
     `Bước nhỏ tiếp theo: ${analysis.nextStep}`,
-    `(${confidenceText}; nếu dữ liệu chưa đủ, MindBuddy sẽ không kết luận quá mức.)`,
-  ].filter(Boolean).slice(0, 4).join('\n');
+  ].filter(Boolean).join('\n');
 }
-
 function normalizeCounselingHistory(history) {
   if (!Array.isArray(history)) return [];
   const normalized = history
@@ -397,7 +398,7 @@ ${buildMemoryBlock(aiMemory)}`;
 - Ghi chú: ${note || 'không có'}
 - ${recentSummary}
 
-Hãy: đồng cảm ngắn (1-2 câu, có thể nhắc đến xu hướng từ những ngày trước nếu liên quan), nhận xét nhẹ nếu stress/năng lượng/giấc ngủ/tập trung có điểm đáng chú ý, đưa 2-3 lời khuyên thực tế, kết bằng câu động viên.`,
+Hãy: đồng cảm ngắn (1-2 câu, có thể nhắc đến xu hướng từ những ngày trước nếu liên quan), dùng chỉ số phụ làm ngữ cảnh nội bộ nhưng không lặp lại tên chỉ số hoặc điểm số, đưa một bước nhỏ thực tế, kết bằng câu động viên.`,
       },
       {
         role: 'user',
@@ -405,7 +406,7 @@ Hãy: đồng cảm ngắn (1-2 câu, có thể nhắc đến xu hướng từ n
       },
       {
         role: 'user',
-        content: 'Yeu cau cuoi cung: JSON only. Cho phep viet tu nhien hon. summary 1 cau. observations toi da 2 cau ngan, dua sat note va metric. nextStep 1 cau hanh dong nho, khong danh so, khong liet ke. Xung ho on dinh la "minh" va "ban". Khong noi "nguoi dung", "ban ay", "nguoi", "ngươi". Khong chan doan benh.',
+        content: 'Yeu cau cuoi cung: JSON only. Cho phep viet tu nhien hon. summary 1 cau. observations toi da 2 cau ngan, dua sat note; metric chi dung lam ngu canh noi bo. Khong lap lai ten chi so stress/nang luong/giac ngu/tap trung va khong viet diem dang x/5 trong summary, observations, evidence hoac nextStep. nextStep 1 cau hanh dong nho, khong danh so, khong liet ke. Xung ho on dinh la "minh" va "ban". Khong noi "nguoi dung", "ban ay", "nguoi", "ngươi". Khong chan doan benh.',
       },
     ], { maxTokens: 500 });
     const analysis = normalizeAnalysis(text, signals);
