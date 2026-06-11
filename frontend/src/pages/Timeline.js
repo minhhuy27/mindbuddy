@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useApp } from '../context/AppContext';
@@ -10,12 +10,60 @@ import './Timeline.css';
 const FILTERS = [
   { id: 'all', icon: '🧭', label: 'Tất cả' },
   { id: 'mood', icon: '💭', label: 'Check-in' },
-  { id: 'media', icon: '🖼️', label: 'Media' },
-  { id: 'pomodoro', icon: '🍅', label: 'Pomodoro' },
+  { id: 'media', icon: '🖼️', label: 'Ký ức' },
+  { id: 'positive', icon: '✨', label: 'Điều tốt' },
   { id: 'review', icon: '🪞', label: 'Nhìn lại' },
+  { id: 'pomodoro', icon: '🍅', label: 'Pomodoro' },
   { id: 'pinned', icon: '★', label: 'Đã ghim' },
 ];
 
+const VIEW_DETAILS = {
+  all: {
+    title: 'Trục thời gian cuộc sống trong MindBuddy',
+    description: 'Gom check-in, note, ảnh/video/audio, Pomodoro và bản nhìn lại ngày vào một dòng thời gian duy nhất để bạn đọc lại đúng bối cảnh.',
+    note: 'Timeline là nơi xem tổng hợp. Ký ức, Điều tốt và Nhìn lại giờ là các bộ lọc nhanh trong cùng một màn hình.',
+  },
+  mood: {
+    title: 'Lịch sử check-in theo dòng thời gian',
+    description: 'Chỉ hiển thị các lần ghi cảm xúc, nguyên nhân, chỉ số phụ và note trong ngày.',
+    note: 'Dùng view này khi bạn muốn đọc nhật ký cảm xúc liên tục mà không bị lẫn media hoặc Pomodoro.',
+  },
+  media: {
+    title: 'Ký ức bằng ảnh, video và âm thanh',
+    description: 'Lọc các check-in có tệp đính kèm để xem lại bối cảnh sống động hơn.',
+    note: 'Đây là view thay cho việc phải mở riêng trang Ký ức khi bạn chỉ muốn xem media.',
+  },
+  positive: {
+    title: 'Điều mình cần nhớ',
+    description: 'Gom các check-in tích cực, note đã ghim và những khoảnh khắc có tín hiệu tốt.',
+    note: 'Khi thấy xuống tinh thần, mở view này để đọc lại các ngày mình đã ổn hơn.',
+  },
+  review: {
+    title: 'Nhìn lại ngày trong Timeline',
+    description: 'Hiển thị các bản tóm tắt ngày đã tạo và gợi ý tạo review cho ngày có check-in.',
+    note: 'View này thay cho việc phải nhớ mở riêng trang Nhìn lại để kiểm tra từng ngày.',
+  },
+  pomodoro: {
+    title: 'Các phiên tập trung trong ngày',
+    description: 'Xem Pomodoro cùng cảm nhận sau phiên để hiểu nhịp tập trung của mình.',
+    note: 'Pomodoro nằm cùng Timeline để bạn thấy việc học và trạng thái tinh thần liên quan ra sao.',
+  },
+  pinned: {
+    title: 'Các note quan trọng đã ghim',
+    description: 'Chỉ hiển thị những check-in bạn chủ động đánh dấu là cần nhớ.',
+    note: 'Đây là view gọn cho những điều bạn muốn giữ lại lâu hơn.',
+  },
+};
+
+const POSITIVE_WORDS = [
+  'vui', 'ổn', 'tốt', 'tuyệt', 'thích', 'may mắn', 'biết ơn', 'nhẹ',
+  'dễ chịu', 'bình yên', 'xong', 'hoàn thành', 'tiến bộ', 'đẹp', 'ngon',
+  'cười', 'thành công', 'hài lòng', 'đỡ hơn',
+];
+
+function normalizeFilter(value) {
+  return FILTERS.some(item => item.id === value) ? value : 'all';
+}
 const METRIC_LABELS = {
   stress: 'Stress',
   energy: 'Năng lượng',
@@ -109,6 +157,7 @@ function buildMoodEvents(moodLogs, allMoods) {
       dayKey: keyForDate(log.date),
       time: formatTime(log.date),
       mood,
+      moodScore: Number(mood?.score) || 0,
       note: cleanNote(log.note || ''),
       causes: extractCauses(log.note || ''),
       metrics: log.metrics || null,
@@ -187,6 +236,11 @@ function buildReviewPromptEvents(moodEvents, reviewEvents) {
 function includeByFilter(event, filter) {
   if (filter === 'all') return true;
   if (filter === 'media') return event.type === 'mood' && event.attachments.length > 0;
+  if (filter === 'positive') return event.type === 'mood' && (
+    event.pinned ||
+    Number(event.moodScore) >= 4 ||
+    POSITIVE_WORDS.some(word => String(event.note || '').toLowerCase().includes(word))
+  );
   if (filter === 'pinned') return event.type === 'mood' && event.pinned;
   if (filter === 'review') return event.type === 'review' || event.type === 'review-prompt';
   return event.type === filter;
@@ -326,9 +380,27 @@ function PomodoroEvent({ event }) {
 
 export default function Timeline() {
   const { user, moodLogs, MOODS, customMoods, dailyReviews } = useApp();
-  const [filter, setFilter] = React.useState('all');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [filter, setFilter] = React.useState(() => normalizeFilter(searchParams.get('view')));
   const [query, setQuery] = React.useState('');
   const [visibleDays, setVisibleDays] = React.useState(14);
+  const activeView = VIEW_DETAILS[filter] || VIEW_DETAILS.all;
+
+  React.useEffect(() => {
+    setFilter(normalizeFilter(searchParams.get('view')));
+  }, [searchParams]);
+
+  React.useEffect(() => {
+    setVisibleDays(14);
+  }, [filter, query]);
+
+  const selectFilter = (nextFilter) => {
+    const normalized = normalizeFilter(nextFilter);
+    const nextParams = new URLSearchParams(searchParams);
+    if (normalized === 'all') nextParams.delete('view');
+    else nextParams.set('view', normalized);
+    setSearchParams(nextParams);
+  };
 
   const allMoods = React.useMemo(
     () => [...MOODS, ...(customMoods || [])],
@@ -413,9 +485,10 @@ export default function Timeline() {
     <div className="timeline-page">
       <section className="timeline-hero">
         <div>
-          <span className="timeline-kicker">Timeline hợp nhất</span>
-          <h1>Trục thời gian cuộc sống trong MindBuddy</h1>
-          <p>Gom check-in, note, ảnh/video/audio, Pomodoro và bản nhìn lại ngày vào một dòng thời gian duy nhất để bạn đọc lại đúng bối cảnh.</p>
+          <span className="timeline-kicker">Timeline trung tâm</span>
+          <h1>{activeView.title}</h1>
+          <p>{activeView.description}</p>
+          <div className="timeline-view-note">{activeView.note}</div>
         </div>
         <div className="timeline-hero-stats" aria-label="Tổng quan timeline">
           <div><strong>{stats.days}</strong><span>Ngày</span></div>
@@ -432,7 +505,7 @@ export default function Timeline() {
               key={item.id}
               type="button"
               className={filter === item.id ? 'active' : ''}
-              onClick={() => setFilter(item.id)}
+              onClick={() => selectFilter(item.id)}
             >
               <span>{item.icon}</span>
               {item.label}

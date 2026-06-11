@@ -181,6 +181,8 @@ export default function Dashboard() {
   const [quickMood, setQuickMood] = React.useState(null);
   const [quickNote, setQuickNote] = React.useState('');
   const [quickFeedback, setQuickFeedback] = React.useState('');
+  const [quickAiPreview, setQuickAiPreview] = React.useState(null);
+  const [quickAiPreviewStatus, setQuickAiPreviewStatus] = React.useState('');
   const [quickAnalyzing, setQuickAnalyzing] = React.useState(false);
   const [quickSaveStatus, setQuickSaveStatus] = React.useState('');
   const [showAllQuickMoods, setShowAllQuickMoods] = React.useState(false);
@@ -736,7 +738,10 @@ export default function Dashboard() {
     setQuickAnalyzing(true);
     setQuickSaveStatus('');
     setQuickImageError('');
+    setQuickAiPreview(null);
+    setQuickAiPreviewStatus('');
     let imagePayload = null;
+    let checkinSaved = false;
     try {
       if (quickImageFiles.length > 0) {
         imagePayload = await uploadMoodFiles({
@@ -746,22 +751,15 @@ export default function Dashboard() {
           onStatus: setQuickSaveStatus,
         });
       }
-    } catch (err) {
-      console.error('Quick media upload error:', err);
-      setQuickImageError(err.message || 'Không thể lưu tệp check-in.');
-      setQuickAnalyzing(false);
+      await addMoodLog(quickMood, note, null, imagePayload);
+      checkinSaved = true;
+      setQuickMood(null);
+      setQuickNote('');
+      clearQuickImages();
+      setQuickFeedback('Đã ghi lại hôm nay. MindBuddy đang phân tích nhanh cho bạn...');
       setQuickSaveStatus('');
-      return;
-    }
-    await addMoodLog(quickMood, note, null, imagePayload);
-    setQuickMood(null);
-    setQuickNote('');
-    clearQuickImages();
-    setQuickFeedback('Đã ghi lại hôm nay. MindBuddy đang phân tích nhanh cho bạn...');
-    setQuickSaveStatus('');
 
-    try {
-      const advice = await analyzeMood({
+      const analysisRequest = {
         moodLabel: mood?.label || 'Không rõ',
         note,
         causes: [],
@@ -769,12 +767,8 @@ export default function Dashboard() {
         recentMoods,
         aiMemory: aiMemory || [],
         userGoal: currentGoal?.label || userGoal,
-      });
-
-      if (advice) {
-        saveTodayAI({ advice, moodLabel: mood?.label || '', chatMessages: [] });
-      }
-
+      };
+      const advice = await analyzeMood(analysisRequest);
       const todayLabel = format(new Date(), 'dd/MM/yyyy');
       const todayEntries = [
         { moodLabel: mood?.label || 'Không rõ', note, causes: [] },
@@ -787,28 +781,77 @@ export default function Dashboard() {
             return { moodLabel: m?.label || 'Không rõ', note: cleanNote, causes: causesInNote, metrics: l.metrics };
           }),
       ];
-      summarizeDay({ date: todayLabel, entries: todayEntries }).then(summary => {
-        if (summary !== null) {
-          saveAiMemory({
-            date: todayLabel,
-            summary: summary || '',
-            moods: todayEntries.map(e => e.moodLabel),
-          });
-        }
-      });
 
-      setQuickFeedback(advice
-        ? 'Đã ghi lại và tạo lời khuyên AI. Mở tab Insight trong trang Cảm xúc để xem.'
-        : 'Đã ghi lại hôm nay. AI chưa phản hồi được, bạn có thể thử lại trong trang Cảm xúc.');
+      if (advice) {
+        setQuickAiPreview({ advice, request: analysisRequest, todayLabel, todayEntries });
+        setQuickAiPreviewStatus('AI đã tạo bản phân tích nháp. Bạn chọn lưu, ẩn hoặc tạo lại.');
+        setQuickFeedback('Đã ghi lại. Phân tích AI đang chờ bạn duyệt.');
+      } else {
+        setQuickFeedback('Đã ghi lại hôm nay. AI chưa phản hồi được, bạn có thể thử lại trong trang Cảm xúc.');
+        window.setTimeout(() => setQuickFeedback(''), 3200);
+      }
     } catch (err) {
-      console.error('Dashboard quick AI error:', err);
-      setQuickFeedback('Đã ghi lại hôm nay. AI đang bận, bạn có thể xem lại trong trang Cảm xúc.');
+      console.error('Dashboard quick check-in error:', err);
+      if (checkinSaved) {
+        setQuickFeedback('Đã ghi lại hôm nay. AI đang bận, bạn có thể thử lại trong trang Cảm xúc.');
+      } else {
+        setQuickImageError(err.message || 'Không thể lưu check-in. Vui lòng thử lại.');
+        setQuickFeedback('');
+      }
+    } finally {
+      setQuickAnalyzing(false);
+      setQuickSaveStatus('');
+    }
+  };
+
+  const saveQuickAiPreview = async () => {
+    if (!quickAiPreview?.advice) return;
+    const { advice, request, todayLabel, todayEntries } = quickAiPreview;
+    saveTodayAI({ advice, moodLabel: request.moodLabel || '', chatMessages: [] });
+    const summary = await summarizeDay({ date: todayLabel, entries: todayEntries });
+    if (summary !== null) {
+      saveAiMemory({
+        date: todayLabel,
+        summary: summary || '',
+        moods: todayEntries.map(e => e.moodLabel),
+      });
+    }
+    setQuickAiPreview(null);
+    setQuickAiPreviewStatus('Đã lưu phân tích AI vào Insight hôm nay.');
+    setQuickFeedback('Đã lưu phân tích AI. Bạn có thể mở tab Insight trong trang Cảm xúc để xem lại.');
+    window.setTimeout(() => {
+      setQuickAiPreviewStatus('');
+      setQuickFeedback('');
+    }, 3200);
+  };
+
+  const hideQuickAiPreview = () => {
+    setQuickAiPreview(null);
+    setQuickAiPreviewStatus('Đã ẩn phân tích AI. Nhật ký vẫn được giữ nguyên.');
+    setQuickFeedback('');
+    window.setTimeout(() => setQuickAiPreviewStatus(''), 2800);
+  };
+
+  const regenerateQuickAiPreview = async () => {
+    if (!quickAiPreview?.request || quickAnalyzing) return;
+    setQuickAnalyzing(true);
+    setQuickFeedback('Đang tạo lại phân tích AI...');
+    try {
+      const advice = await analyzeMood(quickAiPreview.request);
+      if (advice) {
+        setQuickAiPreview(prev => ({ ...prev, advice }));
+        setQuickAiPreviewStatus('Đã tạo lại bản phân tích nháp.');
+        setQuickFeedback('');
+      } else {
+        setQuickFeedback('AI chưa phản hồi được. Bạn có thể thử lại sau.');
+      }
+    } catch (err) {
+      console.error('Dashboard quick AI regenerate error:', err);
+      setQuickFeedback('AI đang bận, vui lòng thử lại sau.');
     } finally {
       setQuickAnalyzing(false);
     }
-    window.setTimeout(() => setQuickFeedback(''), 3200);
   };
-
   const renderDashboardBlock = (blockId) => {
     if (blockId === 'week') {
       return (
@@ -1458,6 +1501,30 @@ export default function Dashboard() {
             {quickAnalyzing ? (quickSaveStatus || 'Đang phân tích...') : 'Lưu check-in hôm nay'}
           </button>
           {quickFeedback && <p className="quick-feedback" role="status">{quickFeedback}</p>}
+          {quickAiPreview && (
+            <div className="quick-ai-preview">
+              <div className="quick-ai-preview-header">
+                <span>✨ Phân tích AI nháp</span>
+                <strong>Chưa lưu</strong>
+              </div>
+              <p>{quickAiPreview.advice}</p>
+              {quickAiPreviewStatus && <small>{quickAiPreviewStatus}</small>}
+              <div className="quick-ai-preview-actions">
+                <button type="button" className="btn btn-primary" onClick={saveQuickAiPreview}>
+                  Lưu phân tích này
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={hideQuickAiPreview}>
+                  Ẩn khỏi lịch sử
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={regenerateQuickAiPreview} disabled={quickAnalyzing}>
+                  Tạo lại
+                </button>
+              </div>
+            </div>
+          )}
+          {!quickAiPreview && quickAiPreviewStatus && (
+            <p className="quick-ai-preview-status" role="status">{quickAiPreviewStatus}</p>
+          )}
         </div>
 
         <aside className="card next-action-card">

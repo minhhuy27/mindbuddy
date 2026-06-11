@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
@@ -383,6 +383,8 @@ export default function MoodTracker() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [lastAnalysisRequest, setLastAnalysisRequest] = useState(null);
+  const [aiPreview, setAiPreview] = useState(null);
+  const [aiPreviewStatus, setAiPreviewStatus] = useState('');
   const [chatMessages, setChatMessages] = useState(todayAIData?.chatMessages || []);
   const [chatInput, setChatInput] = useState('');
   const [chatSending, setChatSending] = useState(false);
@@ -1015,6 +1017,11 @@ export default function MoodTracker() {
   const runMoodAnalysis = async (request) => {
     setAiLoading(true);
     setAiError('');
+    setAiPreview(null);
+    setAiPreviewStatus('');
+    setAiAdvice('');
+    setChatMessages([]);
+    chatFnRef.current = null;
     setLastAnalysisRequest(request);
     try {
       const advice = await analyzeMood({
@@ -1032,42 +1039,68 @@ export default function MoodTracker() {
         return;
       }
 
-      setAiAdvice(advice);
-      setChatMessages([]);
-      setChatOpen(true);
-      setChatError('');
-      setFailedChatMessage('');
-      chatFnRef.current = createChat(advice, request.moodLabel, [], request.aiMemory || [], request.userGoal);
-      saveTodayAI({ advice, moodLabel: request.moodLabel, chatMessages: [] });
-
-      const todayLabel = format(new Date(), 'dd/MM/yyyy');
-      const todayLogs = [...moodLogs, {
-        mood: request.moodId,
-        note: request.fullNote,
-        metrics: request.metrics,
-        date: new Date().toISOString(),
-      }].filter(l => !l.excludeFromAI && new Date(l.date).toDateString() === new Date().toDateString());
-      const entries = todayLogs.map(l => {
-        const m = allMoods.find(x => x.id === l.mood);
-        const causesInNote = l.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
-        const cleanNote = l.note?.replace(/\s*\[.+\]$/, '') || '';
-        return { moodLabel: m?.label || 'Không rõ', note: cleanNote, causes: causesInNote, metrics: l.metrics };
-      });
-      summarizeDay({ date: todayLabel, entries }).then(summary => {
-        if (summary !== null) {
-          saveAiMemory({
-            date: todayLabel,
-            summary: summary || '',
-            moods: entries.map(e => e.moodLabel),
-          });
-        }
-      });
+      setAiPreview({ advice, request });
+      setAiPreviewStatus('AI đã tạo bản phân tích nháp. Bạn có thể lưu, ẩn hoặc tạo lại trước khi đưa vào Insight.');
+      setChatOpen(false);
     } catch (err) {
       console.error('AI error:', err);
       setAiError('MindBuddy AI phản hồi quá lâu hoặc đang lỗi. Vui lòng thử lại sau.');
     } finally {
       setAiLoading(false);
     }
+  };
+
+  const saveAnalysisPreview = async () => {
+    if (!aiPreview?.advice || !aiPreview?.request) return;
+    const { advice, request } = aiPreview;
+    setAiAdvice(advice);
+    setChatMessages([]);
+    setChatOpen(true);
+    setChatError('');
+    setFailedChatMessage('');
+    chatFnRef.current = createChat(advice, request.moodLabel, [], request.aiMemory || [], request.userGoal);
+    saveTodayAI({ advice, moodLabel: request.moodLabel, chatMessages: [] });
+    setAiPreview(null);
+    setAiPreviewStatus('Đã lưu phân tích AI vào Insight hôm nay.');
+    window.setTimeout(() => setAiPreviewStatus(''), 2600);
+
+    const todayLabel = format(new Date(), 'dd/MM/yyyy');
+    const todayLogs = moodLogs
+      .filter(l => !l.excludeFromAI && new Date(l.date).toDateString() === new Date().toDateString());
+    const hasRequestLog = todayLogs.some(l => l.mood === request.moodId && l.note === request.fullNote);
+    const logsForMemory = hasRequestLog
+      ? todayLogs
+      : [...todayLogs, {
+        mood: request.moodId,
+        note: request.fullNote,
+        metrics: request.metrics,
+        date: new Date().toISOString(),
+      }];
+    const entries = logsForMemory.map(l => {
+      const m = allMoods.find(x => x.id === l.mood);
+      const causesInNote = l.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
+      const cleanNote = l.note?.replace(/\s*\[.+\]$/, '') || '';
+      return { moodLabel: m?.label || 'Không rõ', note: cleanNote, causes: causesInNote, metrics: l.metrics };
+    });
+    const summary = await summarizeDay({ date: todayLabel, entries });
+    if (summary !== null) {
+      saveAiMemory({
+        date: todayLabel,
+        summary: summary || '',
+        moods: entries.map(e => e.moodLabel),
+      });
+    }
+  };
+
+  const hideAnalysisPreview = () => {
+    setAiPreview(null);
+    setAiPreviewStatus('Đã ẩn phân tích AI. Check-in vẫn được giữ trong nhật ký.');
+    window.setTimeout(() => setAiPreviewStatus(''), 2600);
+  };
+
+  const regenerateAnalysisPreview = () => {
+    const request = aiPreview?.request || lastAnalysisRequest;
+    if (request) runMoodAnalysis(request);
   };
 
   const handleSave = async () => {
@@ -1768,7 +1801,7 @@ export default function MoodTracker() {
         {activeTab === 'insight' && (
         <div className="tracker-tab-panel insight-tab-panel">
           {/* AI Advice & Chat */}
-          {(aiLoading || aiAdvice || aiError) ? (
+          {(aiLoading || aiPreview || aiAdvice || aiError || aiPreviewStatus) ? (
             <div className="card mt-4">
               {aiLoading && (
                 <div className="ai-loading ai-status">
@@ -1789,7 +1822,31 @@ export default function MoodTracker() {
                   )}
                 </div>
               )}
-              {aiAdvice && !aiLoading && (
+              {aiPreview && !aiLoading && (
+                <div className="ai-advice ai-preview-card">
+                  <div className="ai-advice-header">
+                    <span>✨ Bản phân tích nháp</span>
+                    <span className="memory-badge">Chưa lưu</span>
+                  </div>
+                  <p>{aiPreview.advice}</p>
+                  {aiPreviewStatus && <p className="ai-preview-note">{aiPreviewStatus}</p>}
+                  <div className="ai-preview-actions">
+                    <button className="btn btn-primary" onClick={saveAnalysisPreview}>
+                      Lưu phân tích này
+                    </button>
+                    <button className="btn btn-secondary" onClick={hideAnalysisPreview}>
+                      Ẩn khỏi lịch sử
+                    </button>
+                    <button className="btn btn-secondary" onClick={regenerateAnalysisPreview} disabled={aiLoading}>
+                      Tạo lại
+                    </button>
+                  </div>
+                </div>
+              )}
+              {!aiPreview && aiPreviewStatus && !aiLoading && (
+                <p className="ai-preview-saved-status">{aiPreviewStatus}</p>
+              )}
+              {aiAdvice && !aiLoading && !aiPreview && (
                 <>
                   <div className="ai-advice">
                     <div className="ai-advice-header">

@@ -42,6 +42,20 @@
   line-height: 1.58;
 }
 
+.timeline-view-note {
+  display: inline-flex;
+  max-width: 760px;
+  margin-top: 14px;
+  border: 1px solid rgba(255,255,255,0.26);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.13);
+  color: rgba(255,255,255,0.86);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+  padding: 8px 12px;
+}
+
 .timeline-hero-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(98px, 1fr));
@@ -510,6 +524,11 @@
 
   .timeline-hero h1 {
     font-size: 27px;
+  }
+
+  .timeline-view-note {
+    display: block;
+    border-radius: 12px;
   }
 
   .timeline-hero-stats {
