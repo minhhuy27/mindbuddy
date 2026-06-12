@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { notifyPomodoroBreak, notifyPomodoroResume } from '../utils/notifications';
 import './Pomodoro.css';
@@ -116,6 +116,8 @@ function buildSmartRecommendation(metrics) {
 
 export default function Pomodoro() {
   const { incrementPomodoro, pomodoroCount, user, moodLogs } = useApp();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [mode, setMode] = useState('work'); // work | break
   const [timeLeft, setTimeLeft] = useState(25 * 60);
   const [running, setRunning] = useState(false);
@@ -147,6 +149,7 @@ export default function Pomodoro() {
   const intervalRef = useRef(null);
   const audioRef = useRef(null);
   const activeSessionRef = useRef(null);
+  const quickStartHandledRef = useRef('');
   const latestMoodLog = React.useMemo(() => (
     [...moodLogs]
       .filter(log => log.metrics)
@@ -180,7 +183,7 @@ export default function Pomodoro() {
     localStorage.setItem(sessionKey, JSON.stringify(capped));
   };
 
-  const createWorkSession = () => {
+  const createWorkSession = useCallback(() => {
     const session = {
       id: Date.now(),
       date: new Date().toISOString(),
@@ -190,7 +193,33 @@ export default function Pomodoro() {
     };
     setActiveSession(session);
     return session;
-  };
+  }, [focusBefore, workMin]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('quick') !== 'start') {
+      quickStartHandledRef.current = '';
+      return;
+    }
+
+    const token = location.search;
+    if (quickStartHandledRef.current === token) return;
+    quickStartHandledRef.current = token;
+
+    if (!running && !activeSessionRef.current) {
+      setMode('work');
+      setBreakTip(null);
+      setTimeLeft(workMin * 60);
+      createWorkSession();
+      setRunning(true);
+    }
+
+    params.delete('quick');
+    navigate({
+      pathname: location.pathname,
+      search: params.toString() ? `?${params.toString()}` : '',
+    }, { replace: true });
+  }, [createWorkSession, location.pathname, location.search, navigate, running, workMin]);
 
   const finishWorkSession = () => {
     const current = activeSessionRef.current || {

@@ -29,6 +29,44 @@ const ALL_NAV = [...PRIMARY_NAV, ...MORE_NAV, SOS_NAV];
 const TIMELINE_MORE_VIEWS = new Set(['media', 'review', 'positive']);
 const SIDEBAR_COLLAPSED_KEY = 'mindbuddy_sidebar_collapsed';
 
+const QUICK_ADD_ACTIONS = [
+  {
+    id: 'mood',
+    icon: '💭',
+    title: 'Ghi cảm xúc',
+    subtitle: 'Mở form check-in hôm nay',
+    to: '/mood?tab=today&quick=mood',
+  },
+  {
+    id: 'audio',
+    icon: '🎙️',
+    title: 'Ghi âm nhanh',
+    subtitle: 'Mở check-in và bắt đầu ghi âm',
+    to: '/mood?tab=today&quick=audio',
+  },
+  {
+    id: 'media',
+    icon: '📎',
+    title: 'Thêm ảnh/video',
+    subtitle: 'Đính kèm media vào check-in',
+    to: '/mood?tab=today&quick=media',
+  },
+  {
+    id: 'private',
+    icon: '🔒',
+    title: 'Viết note riêng tư',
+    subtitle: 'Lưu nhật ký nhưng không gửi AI',
+    to: '/mood?tab=today&quick=private',
+  },
+  {
+    id: 'pomodoro',
+    icon: '🍅',
+    title: 'Bắt đầu Pomodoro',
+    subtitle: 'Vào phiên tập trung ngay',
+    to: '/pomodoro?quick=start',
+  },
+];
+
 function normalizeCommandText(value = '') {
   return String(value)
     .toLowerCase()
@@ -100,6 +138,7 @@ export default function Layout({ children }) {
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
   const [commandActiveIndex, setCommandActiveIndex] = useState(0);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [backupReminderVisible, setBackupReminderVisible] = useState(false);
   const [backupDownloading, setBackupDownloading] = useState(false);
   const [backupReminderError, setBackupReminderError] = useState('');
@@ -113,6 +152,22 @@ export default function Layout({ children }) {
       // Ignore storage failures; the sidebar still works for the current session.
     }
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    setQuickAddOpen(false);
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (!quickAddOpen) return undefined;
+    const handleQuickAddKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setQuickAddOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleQuickAddKeyDown);
+    return () => document.removeEventListener('keydown', handleQuickAddKeyDown);
+  }, [quickAddOpen]);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -129,6 +184,12 @@ export default function Layout({ children }) {
     setMenuOpen(false);
     setMoreOpen(false);
   }, []);
+
+  const runQuickAddAction = useCallback((action) => {
+    setQuickAddOpen(false);
+    closeMenus();
+    navigate(action.to);
+  }, [closeMenus, navigate]);
 
   const downloadBackupJson = useCallback(async () => {
     if (!user?.uid) return;
@@ -384,6 +445,7 @@ export default function Layout({ children }) {
       if (event.key === 'Escape') {
         event.preventDefault();
         closeCommandPalette();
+        setQuickAddOpen(false);
         return;
       }
       if (event.key === 'ArrowDown') {
@@ -667,6 +729,37 @@ export default function Layout({ children }) {
           </section>
         </div>
       )}
+
+      <div className={`quick-add ${quickAddOpen ? 'open' : ''}`}>
+        {quickAddOpen && (
+          <div className="quick-add-menu" role="menu" aria-label="Thêm nhanh">
+            {QUICK_ADD_ACTIONS.map(action => (
+              <button
+                key={action.id}
+                type="button"
+                role="menuitem"
+                className="quick-add-item"
+                onClick={() => runQuickAddAction(action)}
+              >
+                <span className="quick-add-item-icon" aria-hidden="true">{action.icon}</span>
+                <span>
+                  <strong>{action.title}</strong>
+                  <small>{action.subtitle}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          className="quick-add-button"
+          onClick={() => setQuickAddOpen(open => !open)}
+          aria-label={quickAddOpen ? 'Đóng thêm nhanh' : 'Mở thêm nhanh'}
+          aria-expanded={quickAddOpen}
+        >
+          <span aria-hidden="true">{quickAddOpen ? '×' : '+'}</span>
+        </button>
+      </div>
 
       <nav className="bottom-nav" aria-label="Điều hướng nhanh">
         {MOBILE_NAV.map(item => (

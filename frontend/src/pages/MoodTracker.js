@@ -376,6 +376,8 @@ export default function MoodTracker() {
   const recordingChunksRef = React.useRef([]);
   const recordingTimerRef = React.useRef(null);
   const mediaDropDepthRef = React.useRef(0);
+  const quickActionHandledRef = React.useRef('');
+  const startAudioRecordingRef = React.useRef(null);
 
   // ── Custom mood modal ──
   const [showModal, setShowModal] = useState(false);
@@ -939,6 +941,7 @@ export default function MoodTracker() {
       setImageError('Không truy cập được micro. Hãy cho phép quyền micro rồi thử lại.');
     }
   };
+  startAudioRecordingRef.current = startAudioRecording;
 
   function stopAudioRecording() {
     const recorder = mediaRecorderRef.current;
@@ -949,6 +952,44 @@ export default function MoodTracker() {
     setRecordingState('stopping');
     recorder.stop();
   }
+
+  React.useEffect(() => {
+    const quickAction = searchParams.get('quick');
+    if (!quickAction) {
+      quickActionHandledRef.current = '';
+      return undefined;
+    }
+
+    const quickToken = searchParams.toString();
+    if (quickActionHandledRef.current === quickToken) return undefined;
+    quickActionHandledRef.current = quickToken;
+    setActiveTab('today');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    const timer = window.setTimeout(() => {
+      if (quickAction === 'private') {
+        setExcludeFromAI(true);
+        setCheckinFeedback('Đang viết note riêng tư. Dòng này sẽ không được gửi cho AI.');
+        noteTextareaRef.current?.focus();
+      } else if (quickAction === 'media') {
+        setImageError('');
+        setCheckinFeedback('Chọn ảnh/video hoặc kéo thả tệp vào khung check-in.');
+        imageInputRef.current?.click();
+      } else if (quickAction === 'audio') {
+        setCheckinFeedback('Đang mở ghi âm nhanh.');
+        startAudioRecordingRef.current?.();
+      } else {
+        noteTextareaRef.current?.focus();
+      }
+
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('quick');
+      setSearchParams(nextParams, { replace: true });
+      window.setTimeout(() => setCheckinFeedback(''), 3600);
+    }, 180);
+
+    return () => window.clearTimeout(timer);
+  }, [searchParams, setSearchParams]);
 
   const removeExistingImageAt = (index) => {
     setExistingImages(prev => prev.filter((_, i) => i !== index));
