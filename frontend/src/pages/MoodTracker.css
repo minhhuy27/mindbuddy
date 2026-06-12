@@ -627,12 +627,31 @@
   display: inline-flex;
 }
 .cause-btn {
-  padding: 5px 12px; border-radius: 20px; border: 1.5px solid var(--border);
-  background: var(--card); cursor: pointer; font-size: 12px;
-  transition: all 0.2s; color: var(--text);
+  --cause-color: var(--primary);
+  --cause-bg: var(--accent-purple);
+  --cause-border: var(--border);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px; border-radius: 20px; border: 1.5px solid var(--cause-border);
+  background: var(--cause-bg); cursor: pointer; font-size: 12px;
+  transition: all 0.2s; color: var(--cause-color);
+  font-weight: 800;
 }
-.cause-btn:hover { border-color: var(--primary); }
-.cause-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+.cause-btn::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--cause-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cause-color) 14%, transparent);
+}
+.cause-btn:hover { border-color: var(--cause-color); transform: translateY(-1px); }
+.cause-btn.active { background: var(--cause-color); color: white; border-color: var(--cause-color); }
+.cause-btn.active::before {
+  background: white;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.22);
+}
 .cause-chip-actions {
   position: absolute;
   right: -8px;
@@ -1205,9 +1224,23 @@
 
 .entry-causes { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
 .entry-cause-tag {
+  --cause-color: var(--primary);
+  --cause-bg: var(--accent-purple);
+  --cause-border: color-mix(in srgb, var(--primary) 30%, transparent);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px; padding: 2px 8px; border-radius: 10px;
-  background: var(--accent-purple); color: var(--primary);
-  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  background: var(--cause-bg); color: var(--cause-color);
+  border: 1px solid var(--cause-border);
+  font-weight: 900;
+}
+.entry-cause-tag::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--cause-color);
 }
 
 .entry-metrics {
@@ -1579,10 +1612,14 @@
   color: var(--text); background: var(--card-hover);
   border-width: 3px; box-shadow: 0 0 8px var(--mood-color);
 }
-[data-theme="dark"] .cause-btn,
 [data-theme="dark"] .cause-manage-toggle,
 [data-theme="dark"] .cause-chip-actions button { color: var(--text); background: var(--card); border-color: var(--border); }
-[data-theme="dark"] .cause-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+[data-theme="dark"] .cause-btn {
+  background: color-mix(in srgb, var(--cause-color) 17%, var(--card));
+  border-color: color-mix(in srgb, var(--cause-color) 48%, var(--border));
+  color: color-mix(in srgb, var(--cause-color) 82%, white);
+}
+[data-theme="dark"] .cause-btn.active { background: var(--cause-color); color: white; border-color: var(--cause-color); }
 [data-theme="dark"] .cause-editor-panel { background: var(--bg); border-color: var(--border); }
 [data-theme="dark"] .metric-slider,
 [data-theme="dark"] .entry-metric { background: var(--bg); border-color: var(--border); }
@@ -1605,7 +1642,11 @@
 [data-theme="dark"] .entry-dot { border-color: var(--card); }
 [data-theme="dark"] .entry-mood { color: inherit; }
 [data-theme="dark"] .entry-note { color: var(--text-muted); }
-[data-theme="dark"] .entry-cause-tag { background: var(--accent-purple); color: var(--primary); }
+[data-theme="dark"] .entry-cause-tag {
+  background: color-mix(in srgb, var(--cause-color) 18%, var(--card));
+  border-color: color-mix(in srgb, var(--cause-color) 46%, var(--border));
+  color: color-mix(in srgb, var(--cause-color) 82%, white);
+}
 [data-theme="dark"] .entry-btn { border-color: var(--border); color: var(--text-muted); }
 
 [data-theme="dark"] .ai-advice { background: var(--accent-purple); border-color: var(--primary); }

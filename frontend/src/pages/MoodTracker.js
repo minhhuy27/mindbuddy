@@ -8,12 +8,15 @@ import { analyzeMood, createChat, detectDanger, summarizeDay } from '../utils/ai
 import { exportMoodPDF as exportMoodPDFBase, exportAllMoodPDF as exportAllMoodPDFBase } from '../utils/exportPDF';
 import { uploadMoodFiles } from '../utils/imageUpload';
 import { displayAttachmentName, normalizeMoodAttachments } from '../utils/moodImages';
+import { causeTagStyle, causeTagTitle } from '../utils/causeTags';
 import CrisisPanel from '../components/CrisisPanel';
 import RichText from '../components/RichText';
 import MediaAttachments from '../components/MediaAttachments';
 import './MoodTracker.css';
 
-const DEFAULT_CAUSES = ['Học tập', 'Thi cử', 'Tài chính', 'Bạn bè', 'Gia đình', 'Sức khỏe', 'Tình yêu', 'Khác'];
+const VISUAL_CAUSES = ['Học tập', 'Gia đình', 'Sức khỏe', 'Thời tiết', 'Tài chính', 'Quan hệ', 'Riêng tư'];
+const DEFAULT_CAUSES = [...VISUAL_CAUSES, 'Thi cử', 'Bạn bè', 'Tình yêu', 'Khác'];
+const CAUSE_TAG_SCHEMA_VERSION = 'v2-color-tags';
 
 const METRIC_FIELDS = [
   { id: 'stress', label: 'Stress', low: 'Rất nhẹ', high: 'Rất căng', invert: true },
@@ -431,6 +434,34 @@ export default function MoodTracker() {
   const activeCauses = React.useMemo(() => (
     Array.isArray(causeOptions) ? causeOptions : DEFAULT_CAUSES
   ), [causeOptions]);
+
+  React.useEffect(() => {
+    if (!user || !Array.isArray(causeOptions)) return;
+    const userKey = user.uid || user.email || 'guest';
+    const storageKey = `mb_cause_tags_seeded_${CAUSE_TAG_SCHEMA_VERSION}_${userKey}`;
+
+    try {
+      if (localStorage.getItem(storageKey) === '1') return;
+    } catch (error) {
+      void error;
+      return;
+    }
+
+    const normalized = causeOptions.map(c => String(c || '').trim()).filter(Boolean);
+    const normalizedLower = new Set(normalized.map(c => c.toLowerCase()));
+    const missing = VISUAL_CAUSES.filter(c => !normalizedLower.has(c.toLowerCase()));
+
+    if (!missing.length) {
+      try { localStorage.setItem(storageKey, '1'); } catch (error) { void error; }
+      return;
+    }
+
+    saveCauseOptions([...normalized, ...missing])
+      .then(() => {
+        try { localStorage.setItem(storageKey, '1'); } catch (error) { void error; }
+      })
+      .catch(error => { void error; });
+  }, [causeOptions, saveCauseOptions, user]);
 
   const viewedMonth = new Date(exportYear, exportMonth, 1);
   const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -1498,6 +1529,8 @@ export default function MoodTracker() {
                         <button
                           type="button"
                           className={`cause-btn ${causes.includes(c) ? 'active' : ''}`}
+                          style={causeTagStyle(c)}
+                          title={causeTagTitle(c)}
                           aria-pressed={causes.includes(c)}
                           aria-label={`Chọn nguyên nhân ${c}`}
                           onClick={() => toggleCause(c)}
@@ -2258,7 +2291,14 @@ export default function MoodTracker() {
                                 {causeTags.length > 0 && (
                                   <div className="entry-causes">
                                     {causeTags.map(t => (
-                                      <span key={t} className="entry-cause-tag">{t}</span>
+                                      <span
+                                        key={t}
+                                        className="entry-cause-tag"
+                                        style={causeTagStyle(t)}
+                                        title={causeTagTitle(t)}
+                                      >
+                                        {t}
+                                      </span>
                                     ))}
                                   </div>
                                 )}
@@ -2422,7 +2462,16 @@ export default function MoodTracker() {
                     </div>
                     {causeTags.length > 0 && (
                       <div className="entry-causes">
-                        {causeTags.map(t => <span key={t} className="entry-cause-tag">{t}</span>)}
+                        {causeTags.map(t => (
+                          <span
+                            key={t}
+                            className="entry-cause-tag"
+                            style={causeTagStyle(t)}
+                            title={causeTagTitle(t)}
+                          >
+                            {t}
+                          </span>
+                        ))}
                       </div>
                     )}
                     {logMetrics && (

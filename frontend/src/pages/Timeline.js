@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useApp } from '../context/AppContext';
 import RichText from '../components/RichText';
+import { causeTagStyle, causeTagTitle } from '../utils/causeTags';
 import { displayAttachmentName, normalizeMoodAttachments } from '../utils/moodImages';
 import './Timeline.css';
 
@@ -339,7 +340,15 @@ function MoodEvent({ event }) {
         </div>
         {event.causes.length > 0 && (
           <div className="life-cause-row">
-            {event.causes.map(cause => <span key={cause}>{cause}</span>)}
+            {event.causes.map(cause => (
+              <span
+                key={cause}
+                style={causeTagStyle(cause)}
+                title={causeTagTitle(cause)}
+              >
+                {cause}
+              </span>
+            ))}
           </div>
         )}
         {metricEntries.length > 0 && (

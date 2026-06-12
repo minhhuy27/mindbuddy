@@ -345,9 +345,23 @@
 }
 
 .life-cause-row span {
-  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
-  background: var(--accent-purple);
-  color: var(--primary);
+  --cause-color: var(--primary);
+  --cause-bg: var(--accent-purple);
+  --cause-border: color-mix(in srgb, var(--primary) 35%, var(--border));
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-color: var(--cause-border);
+  background: var(--cause-bg);
+  color: var(--cause-color);
+}
+
+.life-cause-row span::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--cause-color);
 }
 
 .life-metric-row .stress {
@@ -491,6 +505,12 @@
   background:
     linear-gradient(135deg, rgba(43, 67, 176, 0.92), rgba(0, 128, 116, 0.9)),
     linear-gradient(45deg, rgba(253, 203, 110, 0.12), transparent 48%);
+}
+
+[data-theme="dark"] .life-cause-row span {
+  background: color-mix(in srgb, var(--cause-color) 18%, var(--card));
+  border-color: color-mix(in srgb, var(--cause-color) 46%, var(--border));
+  color: color-mix(in srgb, var(--cause-color) 82%, white);
 }
 
 @media (max-width: 900px) {
