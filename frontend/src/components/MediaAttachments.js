@@ -5,6 +5,7 @@ import './MediaAttachments.css';
 export default function MediaAttachments({ attachments, label = 'Tệp check-in', onOpenImage, compact = false, date }) {
   const items = normalizeMoodAttachments(attachments);
   if (!items.length) return null;
+  const imageItems = items.filter(item => item.kind === 'image');
 
   return (
     <div className={`media-attachments ${compact ? 'compact' : ''}`}>
@@ -12,13 +13,14 @@ export default function MediaAttachments({ attachments, label = 'Tệp check-in'
         const itemLabel = `${label} ${index + 1}`;
         const displayName = displayAttachmentName(item, { date, index, total: items.length });
         if (item.kind === 'image') {
+          const imageIndex = imageItems.findIndex(image => image.url === item.url);
           const content = <img src={item.url} alt={itemLabel} />;
           return onOpenImage ? (
             <button
               key={`${item.url}-${index}`}
               type="button"
               className="media-attachment image"
-              onClick={() => onOpenImage(item, itemLabel)}
+              onClick={() => onOpenImage(item, label, imageItems, imageIndex)}
               aria-label={`Xem ${itemLabel} ở dạng lớn`}
             >
               {content}

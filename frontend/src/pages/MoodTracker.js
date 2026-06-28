@@ -749,14 +749,33 @@ export default function MoodTracker() {
     stopRecordingStream();
   }, []);
 
+  const movePhotoLightbox = React.useCallback((direction) => {
+    setPhotoLightbox(current => {
+      if (!current?.items?.length || current.items.length < 2) return current;
+      const nextIndex = (current.index + direction + current.items.length) % current.items.length;
+      return { ...current, index: nextIndex };
+    });
+  }, []);
+
   React.useEffect(() => {
     if (!photoLightbox) return undefined;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') setPhotoLightbox(null);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setPhotoLightbox(null);
+      }
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        movePhotoLightbox(-1);
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        movePhotoLightbox(1);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [photoLightbox]);
+  }, [movePhotoLightbox, photoLightbox]);
 
   const handleImageSelect = (event) => {
     const files = Array.from(event.target.files || []);
@@ -996,11 +1015,16 @@ export default function MoodTracker() {
     setRemoveExistingImage(true);
   };
 
-  const openPhotoLightbox = (image, label) => {
+  const openPhotoLightbox = (image, label, galleryItems = [], index = 0) => {
     if (!image?.url) return;
+    const items = (Array.isArray(galleryItems) && galleryItems.length ? galleryItems : [image])
+      .filter(item => item?.url && item.kind === 'image');
+    if (!items.length) return;
+    const safeIndex = Number.isFinite(index) && index >= 0 ? Math.min(index, items.length - 1) : 0;
     setPhotoLightbox({
-      url: image.url,
-      name: displayAttachmentName(image),
+      items,
+      index: safeIndex,
+      name: displayAttachmentName(items[safeIndex] || image),
       label: label || 'Ảnh check-in',
     });
   };
@@ -1446,6 +1470,13 @@ export default function MoodTracker() {
   const grouped = groupByDay(filteredMoodLogs);
   const visibleGroups = grouped;
   const todaysLogs = moodLogs.filter(l => new Date(l.date).toDateString() === new Date().toDateString());
+  const lightboxItems = photoLightbox?.items || [];
+  const activeLightboxItem = lightboxItems[photoLightbox?.index || 0] || null;
+  const lightboxCount = lightboxItems.length;
+  const lightboxPosition = photoLightbox ? (photoLightbox.index || 0) + 1 : 0;
+  const activeLightboxLabel = photoLightbox
+    ? `${photoLightbox.label}${lightboxCount > 1 ? ` · ${lightboxPosition}/${lightboxCount}` : ''}`
+    : '';
   const moodTabs = [
     { id: 'today', label: 'Ghi hôm nay', count: todaysLogs.length },
     { id: 'history', label: 'Lịch sử', count: moodLogs.length },
@@ -2549,12 +2580,44 @@ export default function MoodTracker() {
 
       {photoLightbox && (
         <div className="photo-lightbox-overlay" onClick={e => e.target === e.currentTarget && setPhotoLightbox(null)}>
-          <div className="photo-lightbox" role="dialog" aria-modal="true" aria-label={photoLightbox.label}>
+          <div className="photo-lightbox" role="dialog" aria-modal="true" aria-label={activeLightboxLabel}>
             <div className="photo-lightbox-header">
-              <span>{photoLightbox.label}</span>
+              <span>{activeLightboxLabel}</span>
               <button type="button" onClick={() => setPhotoLightbox(null)} aria-label="Đóng ảnh lớn">×</button>
             </div>
-            <img src={photoLightbox.url} alt={photoLightbox.label} />
+            <div className="photo-lightbox-stage">
+              {lightboxCount > 1 && (
+                <button
+                  type="button"
+                  className="photo-lightbox-nav prev"
+                  onClick={() => movePhotoLightbox(-1)}
+                  aria-label="Xem ảnh trước"
+                >
+                  ‹
+                </button>
+              )}
+              {activeLightboxItem && (
+                <img
+                  src={activeLightboxItem.url}
+                  alt={activeLightboxLabel}
+                />
+              )}
+              {lightboxCount > 1 && (
+                <button
+                  type="button"
+                  className="photo-lightbox-nav next"
+                  onClick={() => movePhotoLightbox(1)}
+                  aria-label="Xem ảnh tiếp theo"
+                >
+                  ›
+                </button>
+              )}
+              {lightboxCount > 1 && (
+                <div className="photo-lightbox-counter" aria-hidden="true">
+                  {lightboxPosition}/{lightboxCount}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
