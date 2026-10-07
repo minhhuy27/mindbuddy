@@ -1,18 +1,17 @@
 /**
  * aiClient.js — Dual AI provider với tự động fallback
  *
- * Primary  : Groq (qwen/qwen3-32b)  — nhanh, miễn phí
- * Fallback : Gemini 2.5 Flash       — tiếng Việt tốt hơn, dùng khi Groq lỗi/rate limit
+ * Primary  : Gemini 3.6 Flash
+ * Fallback : Groq (openai/gpt-oss-20b) — phản hồi nhanh khi Gemini lỗi hoặc quá tải
  */
 
 const Groq = require('groq-sdk');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const GROQ_MODEL   = 'qwen/qwen3-32b';
-const GEMINI_MODEL = 'gemini-2.5-flash';
-const OPENAI_ANALYZE_MODEL = process.env.OPENAI_ANALYZE_MODEL || 'gpt-5.4-mini';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
-// Xóa phần <think>...</think> mà Qwen3 sinh ra
+// Xóa phần suy luận nội bộ nếu model trả về trong thẻ <think>.
 function stripThinking(text) {
   return (text || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 }
@@ -39,82 +38,11 @@ function cleanResponse(text) {
   return stripMarkdown(stripThinking(text));
 }
 
-async function callOpenAI(messages, { maxTokens, json = false } = {}) {
-  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set');
-
-  const body = {
-    model: OPENAI_ANALYZE_MODEL,
-    messages,
-    temperature: 0.2,
-  };
-  if (maxTokens) body.max_completion_tokens = maxTokens;
-  if (json) body.response_format = { type: 'json_object' };
-
-  const postOpenAI = (requestBody) => fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  let response = await postOpenAI(body);
-
-  if (!response.ok) {
-    let errorText = await response.text();
-    if (/temperature/i.test(errorText) && body.temperature !== undefined) {
-      const retryBody = { ...body };
-      delete retryBody.temperature;
-      response = await postOpenAI(retryBody);
-      if (response.ok) {
-        const data = await response.json();
-        const text = data.choices?.[0]?.message?.content;
-        if (!text) throw new Error('OpenAI returned empty response');
-        return cleanResponse(text);
-      }
-      errorText = await response.text();
-    }
-    if (/max_completion_tokens|max_tokens/i.test(errorText) && body.max_completion_tokens !== undefined) {
-      const retryBody = { ...body, max_tokens: body.max_completion_tokens };
-      delete retryBody.max_completion_tokens;
-      delete retryBody.temperature;
-      response = await postOpenAI(retryBody);
-      if (response.ok) {
-        const data = await response.json();
-        const text = data.choices?.[0]?.message?.content;
-        if (!text) throw new Error('OpenAI returned empty response');
-        return cleanResponse(text);
-      }
-      errorText = await response.text();
-    }
-    throw new Error(`OpenAI ${response.status}: ${errorText.slice(0, 300)}`);
-  }
-
-  const data = await response.json();
-  const text = data.choices?.[0]?.message?.content;
-  if (!text) throw new Error('OpenAI returned empty response');
-  return cleanResponse(text);
-}
-
-// ── Groq call ──────────────────────────────────────────────────────────────
-async function callGroq(messages) {
-  if (!process.env.GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
-  const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
-  const response = await client.chat.completions.create({
-    model: GROQ_MODEL,
-    messages,
-  });
-  return stripThinking(response.choices[0].message.content);
-}
-
 // ── Gemini call ────────────────────────────────────────────────────────────
 async function callGemini(messages) {
   if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not set');
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-
-  // Chuyển đổi format OpenAI → Gemini
+  // Chuyển đổi format chat chuẩn sang Gemini
   // Tách system prompt ra khỏi messages
   const systemMsg = messages.find(m => m.role === 'system');
   const chatMsgs  = messages.filter(m => m.role !== 'system');
@@ -137,78 +65,42 @@ async function callGemini(messages) {
   return result.response.text();
 }
 
-// ── Hàm chính: gọi Groq trước, fallback Gemini nếu lỗi ───────────────────
+// ── Hàm chính: gọi Gemini trước, fallback Groq nếu lỗi/rate limit ────────
 async function chat(messages, { maxTokens } = {}) {
-  const groqMessages = messages;
-
   try {
-    if (process.env.GROQ_API_KEY) {
-      const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
-      const opts = {
-        model: GROQ_MODEL,
-        messages: groqMessages,
-      };
-      if (maxTokens) opts.max_tokens = maxTokens;
-
-      const response = await client.chat.completions.create(opts);
-      const text = cleanResponse(response.choices[0].message.content);
-      return { text, provider: 'groq' };
-    }
-    throw new Error('No Groq key');
-  } catch (groqErr) {
-    console.warn(`[AI] Groq failed (${groqErr.message}), falling back to Gemini...`);
-
     if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_gemini_api_key_here') {
-      throw new Error(`Groq failed and Gemini API key not configured. Groq error: ${groqErr.message}`);
+      throw new Error('Gemini API key not configured');
     }
-
-    try {
-      const text = await callGemini(messages);
-      return { text: cleanResponse(text), provider: 'gemini' };
-    } catch (geminiErr) {
-      console.error(`[AI] Gemini also failed: ${geminiErr.message}`);
-      throw new Error(`Both providers failed. Groq: ${groqErr.message} | Gemini: ${geminiErr.message}`);
-    }
-  }
-}
-
-// ── Hàm dùng Gemini trực tiếp (cho tác vụ phân tích sâu), fallback Groq ──
-async function chatAnalyze(messages, { maxTokens } = {}) {
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      const text = await callOpenAI(messages, { maxTokens, json: true });
-      return { text, provider: 'openai', model: OPENAI_ANALYZE_MODEL };
-    } catch (openaiErr) {
-      console.warn(`[AI] OpenAI analyze failed (${openaiErr.message}), falling back to Groq...`);
-    }
-  }
-
-  return chat(messages, { maxTokens });
-}
-
-async function chatGemini(messages, { maxTokens } = {}) {
-  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_gemini_api_key_here') {
-    console.warn('[AI] Gemini key not configured, using Groq instead...');
-    return chat(messages, { maxTokens });
-  }
-
-  try {
     const text = await callGemini(messages);
-    return { text: cleanResponse(text), provider: 'gemini' };
+    return { text: cleanResponse(text), provider: 'gemini', model: GEMINI_MODEL };
   } catch (geminiErr) {
     console.warn(`[AI] Gemini failed (${geminiErr.message}), falling back to Groq...`);
+
+    if (!process.env.GROQ_API_KEY) {
+      throw new Error(`Gemini failed and Groq API key not configured. Gemini error: ${geminiErr.message}`);
+    }
+
     try {
       const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
       const opts = { model: GROQ_MODEL, messages };
       if (maxTokens) opts.max_tokens = maxTokens;
       const response = await client.chat.completions.create(opts);
       const text = cleanResponse(response.choices[0].message.content);
-      return { text, provider: 'groq-fallback' };
+      return { text, provider: 'groq', model: GROQ_MODEL };
     } catch (groqErr) {
       console.error(`[AI] Groq fallback also failed: ${groqErr.message}`);
       throw new Error(`Both providers failed. Gemini: ${geminiErr.message} | Groq: ${groqErr.message}`);
     }
   }
+}
+
+// ── Phân tích sâu dùng cùng policy Gemini -> Groq ────────────────────────
+async function chatAnalyze(messages, { maxTokens } = {}) {
+  return chat(messages, { maxTokens });
+}
+
+async function chatGemini(messages, { maxTokens } = {}) {
+  return chat(messages, { maxTokens });
 }
 
 module.exports = { chat, chatAnalyze, chatGemini, stripThinking };

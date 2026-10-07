@@ -11,5 +11,9 @@ services:
         sync: false        # Điền thủ công trên Render dashboard
       - key: GEMINI_API_KEY
         sync: false        # Điền thủ công trên Render dashboard
+      - key: GEMINI_MODEL
+        value: gemini-3.6-flash
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-20b
       - key: FRONTEND_URL
         sync: false        # Điền URL Netlify của bạn

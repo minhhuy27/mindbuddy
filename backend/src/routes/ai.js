@@ -613,8 +613,8 @@ router.post('/summarize', async (req, res) => {
 // GET /api/ai/status — kiểm tra trạng thái các provider
 router.get('/status', (req, res) => {
   res.json({
-    openai: !!process.env.OPENAI_API_KEY,
-    analyzeModel: process.env.OPENAI_ANALYZE_MODEL || 'gpt-5.4-mini',
+    primaryModel: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
+    fallbackModel: process.env.GROQ_MODEL || 'openai/gpt-oss-20b',
     groq: !!process.env.GROQ_API_KEY,
     gemini: !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_gemini_api_key_here'),
   });
