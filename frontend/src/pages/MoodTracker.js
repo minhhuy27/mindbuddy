@@ -34,6 +34,9 @@ const DEFAULT_METRICS = {
 
 const VALID_TABS = ['today', 'history', 'insight', 'export'];
 const AUDIO_RECORDING_LIMIT = 10 * 60;
+const PHOTO_ZOOM_MIN = 1;
+const PHOTO_ZOOM_MAX = 4;
+const PHOTO_ZOOM_STEP = 0.18;
 const HISTORY_RANGE_OPTIONS = [
   { value: 7, label: '7 ngày' },
   { value: 14, label: '14 ngày' },
@@ -366,6 +369,8 @@ export default function MoodTracker() {
   const [imageError, setImageError] = useState('');
   const [mediaDropActive, setMediaDropActive] = useState(false);
   const [photoLightbox, setPhotoLightbox] = useState(null);
+  const [photoZoom, setPhotoZoom] = useState(1);
+  const [photoZoomOrigin, setPhotoZoomOrigin] = useState({ x: 50, y: 50 });
   const [recordingState, setRecordingState] = useState('idle');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const noteTextareaRef = React.useRef(null);
@@ -749,11 +754,39 @@ export default function MoodTracker() {
     stopRecordingStream();
   }, []);
 
+  const resetPhotoZoom = React.useCallback(() => {
+    setPhotoZoom(1);
+    setPhotoZoomOrigin({ x: 50, y: 50 });
+  }, []);
+
+  const closePhotoLightbox = React.useCallback(() => {
+    setPhotoLightbox(null);
+    resetPhotoZoom();
+  }, [resetPhotoZoom]);
+
   const movePhotoLightbox = React.useCallback((direction) => {
+    resetPhotoZoom();
     setPhotoLightbox(current => {
       if (!current?.items?.length || current.items.length < 2) return current;
       const nextIndex = (current.index + direction + current.items.length) % current.items.length;
       return { ...current, index: nextIndex };
+    });
+  }, [resetPhotoZoom]);
+
+  const handlePhotoLightboxWheel = React.useCallback((event) => {
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width && rect.height) {
+      setPhotoZoomOrigin({
+        x: Math.min(100, Math.max(0, ((event.clientX - rect.left) / rect.width) * 100)),
+        y: Math.min(100, Math.max(0, ((event.clientY - rect.top) / rect.height) * 100)),
+      });
+    }
+
+    const direction = event.deltaY < 0 ? 1 : -1;
+    setPhotoZoom(current => {
+      const next = current + direction * PHOTO_ZOOM_STEP;
+      return Math.min(PHOTO_ZOOM_MAX, Math.max(PHOTO_ZOOM_MIN, Number(next.toFixed(2))));
     });
   }, []);
 
@@ -762,7 +795,7 @@ export default function MoodTracker() {
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        setPhotoLightbox(null);
+        closePhotoLightbox();
       }
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
@@ -775,7 +808,7 @@ export default function MoodTracker() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [movePhotoLightbox, photoLightbox]);
+  }, [closePhotoLightbox, movePhotoLightbox, photoLightbox]);
 
   const handleImageSelect = (event) => {
     const files = Array.from(event.target.files || []);
@@ -1021,6 +1054,7 @@ export default function MoodTracker() {
       .filter(item => item?.url && item.kind === 'image');
     if (!items.length) return;
     const safeIndex = Number.isFinite(index) && index >= 0 ? Math.min(index, items.length - 1) : 0;
+    resetPhotoZoom();
     setPhotoLightbox({
       items,
       index: safeIndex,
@@ -2579,13 +2613,16 @@ export default function MoodTracker() {
       )}
 
       {photoLightbox && (
-        <div className="photo-lightbox-overlay" onClick={e => e.target === e.currentTarget && setPhotoLightbox(null)}>
+        <div className="photo-lightbox-overlay" onClick={e => e.target === e.currentTarget && closePhotoLightbox()}>
           <div className="photo-lightbox" role="dialog" aria-modal="true" aria-label={activeLightboxLabel}>
             <div className="photo-lightbox-header">
               <span>{activeLightboxLabel}</span>
-              <button type="button" onClick={() => setPhotoLightbox(null)} aria-label="Đóng ảnh lớn">×</button>
+              <button type="button" onClick={closePhotoLightbox} aria-label="Đóng ảnh lớn">×</button>
             </div>
-            <div className="photo-lightbox-stage">
+            <div
+              className={`photo-lightbox-stage ${photoZoom > 1 ? 'is-zoomed' : ''}`}
+              onWheel={handlePhotoLightboxWheel}
+            >
               {lightboxCount > 1 && (
                 <button
                   type="button"
@@ -2600,6 +2637,11 @@ export default function MoodTracker() {
                 <img
                   src={activeLightboxItem.url}
                   alt={activeLightboxLabel}
+                  style={{
+                    '--photo-zoom': photoZoom,
+                    '--photo-origin-x': `${photoZoomOrigin.x}%`,
+                    '--photo-origin-y': `${photoZoomOrigin.y}%`,
+                  }}
                 />
               )}
               {lightboxCount > 1 && (
@@ -2617,6 +2659,9 @@ export default function MoodTracker() {
                   {lightboxPosition}/{lightboxCount}
                 </div>
               )}
+              <div className="photo-lightbox-zoom" aria-hidden="true">
+                {Math.round(photoZoom * 100)}%
+              </div>
             </div>
           </div>
         </div>

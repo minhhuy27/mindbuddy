@@ -710,6 +710,7 @@ export function AppProvider({ children }) {
 
   const reloadUserData = async () => {
     if (!user?.uid) return;
+    setDataReady(false);
     await loadUserData(user.uid);
   };
 
@@ -833,6 +834,7 @@ export function AppProvider({ children }) {
       recoverMoodLogsFromReviews,
       backupState,
       createFirestoreBackup,
+      dataReady,
       goalOptions,
       currentGoal,
       saveGoalOptions,

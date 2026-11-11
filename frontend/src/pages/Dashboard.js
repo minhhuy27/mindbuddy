@@ -208,6 +208,7 @@ export default function Dashboard() {
   const [dashboardPreset, setDashboardPreset] = React.useState(DEFAULT_DASHBOARD_PRESET);
 
   const today = new Date();
+  const todayReviewPath = `/daily-review?date=${format(today, 'yyyy-MM-dd')}`;
   const allMoods = React.useMemo(
     () => [...MOODS, ...(customMoods || [])],
     [MOODS, customMoods]
@@ -530,7 +531,7 @@ export default function Dashboard() {
         title: 'Bạn có khung giờ dễ ghi điều tốt',
         text: `${topPositiveBucket[1]} note tích cực gần đây xuất hiện vào buổi ${bucketLabels[topPositiveBucket[0]]}.`,
         evidence: 'Tính từ mood cao hoặc từ khóa tích cực trong note.',
-        to: '/good-moments',
+        to: '/timeline?view=positive',
       });
     }
 
@@ -991,12 +992,12 @@ export default function Dashboard() {
               <h3>Khoảnh khắc tốt</h3>
               <p className="text-muted">Một vài ghi chú tích cực gần đây để mở lại khi cần.</p>
             </div>
-            <Link to="/good-moments" className="quick-link">Xem tất cả</Link>
+            <Link to="/timeline?view=positive" className="quick-link">Xem trên Timeline</Link>
           </div>
           {goodMomentLogs.length > 0 ? (
             <div className="dashboard-good-list">
               {goodMomentLogs.map(log => (
-                <Link key={log.id} to="/good-moments" className="dashboard-good-item">
+                <Link key={log.id} to="/timeline?view=positive" className="dashboard-good-item">
                   {log.imageAttachment ? (
                     log.imageAttachment.kind === 'video'
                       ? <video src={log.imageAttachment.url} muted preload="metadata" />
@@ -1077,8 +1078,8 @@ export default function Dashboard() {
             {[
               { to: '/mood', icon: '💭', label: latestTodayMood ? 'Ghi thêm cảm xúc' : 'Ghi cảm xúc', color: '#a29bfe', primary: true },
               { to: '/needs', icon: '🧭', label: 'Mình cần gì?', color: '#00cec9' },
-              { to: '/daily-review', icon: '🪞', label: 'Nhìn lại ngày', color: '#00cec9' },
-              { to: '/good-moments', icon: '✨', label: 'Khoảnh khắc tốt', color: '#fdcb6e' },
+              { to: todayReviewPath, icon: '🪞', label: 'Nhìn lại ngày', color: '#00cec9' },
+              { to: '/timeline?view=positive', icon: '✨', label: 'Khoảnh khắc tốt', color: '#fdcb6e' },
               { to: '/pomodoro', icon: '🍅', label: 'Tập trung', color: '#fd79a8' },
               { to: '/garden', icon: '🌱', label: 'Chăm vườn', color: '#55efc4' },
               { to: '/community', icon: '🌍', label: 'Góc chia sẻ', color: '#74b9ff' },
@@ -1728,8 +1729,8 @@ export default function Dashboard() {
           {[
             { to: '/mood', icon: '💭', label: latestTodayMood ? 'Ghi thêm cảm xúc' : 'Ghi cảm xúc', color: '#a29bfe', primary: true },
             { to: '/needs', icon: '🧭', label: 'Mình cần gì?', color: '#00cec9' },
-            { to: '/daily-review', icon: '🪞', label: 'Nhìn lại ngày', color: '#00cec9' },
-            { to: '/good-moments', icon: '✨', label: 'Khoảnh khắc tốt', color: '#fdcb6e' },
+            { to: todayReviewPath, icon: '🪞', label: 'Nhìn lại ngày', color: '#00cec9' },
+            { to: '/timeline?view=positive', icon: '✨', label: 'Khoảnh khắc tốt', color: '#fdcb6e' },
             { to: '/pomodoro', icon: '🍅', label: 'Tập trung', color: '#fd79a8' },
             { to: '/garden', icon: '🌱', label: 'Chăm vườn', color: '#55efc4' },
             { to: '/community', icon: '🌍', label: 'Góc chia sẻ', color: '#74b9ff' },

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { format } from 'date-fns';
 import { useApp } from '../context/AppContext';
 import './Needs.css';
 
@@ -91,6 +92,7 @@ export default function Needs() {
     [MOODS, customMoods]
   );
   const todayLogs = React.useMemo(() => getTodayLogs(moodLogs), [moodLogs]);
+  const todayReviewPath = `/daily-review?date=${format(new Date(), 'yyyy-MM-dd')}`;
   const latestLog = todayLogs[0] || moodLogs[0];
   const latestMood = latestLog ? allMoods.find(mood => mood.id === latestLog.mood) : null;
   const inferredNeed = inferNeed(latestMood, latestLog);
@@ -345,7 +347,7 @@ export default function Needs() {
               </div>
             </Link>
 
-            <Link className="need-action-link review" to="/daily-review">
+            <Link className="need-action-link review" to={todayReviewPath}>
               <span>🪞</span>
               <div>
                 <strong>Nhìn lại ngày</strong>

@@ -643,7 +643,7 @@ export default function Profile() {
               <span>Những điều giúp mình ổn hơn</span>
               <h2>Dấu hiệu đáng giữ</h2>
             </div>
-            <Link to="/good-moments">Điều tốt</Link>
+            <Link to="/timeline?view=positive">Xem trên Timeline</Link>
           </div>
           {stabilizers.length ? (
             <div className="profile-stabilizer-list">

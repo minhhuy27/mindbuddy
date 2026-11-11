@@ -500,7 +500,7 @@ export default function DailyReview() {
     <div className="daily-review-page">
       <section className="daily-review-hero">
         <div>
-          <span className="daily-review-kicker">Nhìn lại ngày</span>
+          <Link className="daily-review-kicker" to="/timeline?view=review">← Timeline · Nhìn lại ngày</Link>
           <h1>{format(selectedDate, "EEEE, dd/MM/yyyy", { locale: vi })}</h1>
           <p>MindBuddy gom check-in, chỉ số phụ và Pomodoro để rút ra điều đáng nhớ nhất trong ngày.</p>
         </div>

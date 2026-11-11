@@ -1576,6 +1576,11 @@
   display: grid;
   place-items: center;
   overflow: hidden;
+  overscroll-behavior: contain;
+  cursor: zoom-in;
+}
+.photo-lightbox-stage.is-zoomed {
+  cursor: zoom-out;
 }
 .photo-lightbox-stage img {
   width: auto;
@@ -1583,6 +1588,10 @@
   max-height: calc(92vh - 54px);
   object-fit: contain;
   background: #050711;
+  transform: scale(var(--photo-zoom, 1));
+  transform-origin: var(--photo-origin-x, 50%) var(--photo-origin-y, 50%);
+  transition: transform 0.12s ease-out;
+  will-change: transform;
 }
 .photo-lightbox-nav {
   position: absolute;
@@ -1628,6 +1637,20 @@
   font-weight: 900;
   line-height: 1;
   padding: 8px 11px;
+}
+.photo-lightbox-zoom {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 2;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: white;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 8px 11px;
+  pointer-events: none;
 }
 
 /* ── Export row ── */

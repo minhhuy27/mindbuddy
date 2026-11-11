@@ -24,8 +24,14 @@ const MORE_NAV = [
 
 const SOS_NAV = { path: '/sos', icon: '🆘', label: 'S.O.S' };
 
-const MOBILE_NAV = [...PRIMARY_NAV, SOS_NAV];
-const ALL_NAV = [...PRIMARY_NAV, ...MORE_NAV, SOS_NAV];
+const MOBILE_NAV = [
+  ...PRIMARY_NAV.filter(item => ['/', '/mood', '/timeline'].includes(item.path)),
+  SOS_NAV,
+];
+const MOBILE_MORE_NAV = [
+  ...PRIMARY_NAV.filter(item => ['/needs', '/pomodoro'].includes(item.path)),
+  ...MORE_NAV,
+];
 const TIMELINE_MORE_VIEWS = new Set(['media', 'review', 'positive']);
 const SIDEBAR_COLLAPSED_KEY = 'mindbuddy_sidebar_collapsed';
 
@@ -129,11 +135,11 @@ function getBackupWeekKey(uid) {
 }
 
 export default function Layout({ children }) {
-  const { user, logout, darkMode, setDarkMode, syncNotice, clearSyncNotice, getCurrentUserRawData } = useApp();
+  const { user, logout, darkMode, setDarkMode, dataReady, syncNotice, clearSyncNotice, getCurrentUserRawData } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
-  const [menuOpen, setMenuOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredSidebarCollapsed);
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
@@ -143,7 +149,9 @@ export default function Layout({ children }) {
   const [backupDownloading, setBackupDownloading] = useState(false);
   const [backupReminderError, setBackupReminderError] = useState('');
   const commandInputRef = useRef(null);
+  const mobileMoreDialogRef = useRef(null);
   const moreActive = MORE_NAV.some(item => isNavActive(item, location));
+  const mobileMoreActive = MOBILE_MORE_NAV.some(item => isNavActive(item, location));
 
   useEffect(() => {
     try {
@@ -170,7 +178,7 @@ export default function Layout({ children }) {
   }, [quickAddOpen]);
 
   useEffect(() => {
-    if (!user?.uid) {
+    if (!user?.uid || !dataReady) {
       setBackupReminderVisible(false);
       return;
     }
@@ -178,12 +186,26 @@ export default function Layout({ children }) {
     const completed = localStorage.getItem(`${weekKey}_done`);
     const snoozed = sessionStorage.getItem(`${weekKey}_snooze`);
     setBackupReminderVisible(new Date().getDay() === 0 && !completed && !snoozed);
-  }, [user?.uid]);
+  }, [dataReady, user?.uid]);
+
+  const closeMobileMore = useCallback(() => {
+    const dialog = mobileMoreDialogRef.current;
+    if (dialog?.open) dialog.close();
+    setMobileMoreOpen(false);
+  }, []);
+
+  const openMobileMore = useCallback(() => {
+    setMoreOpen(false);
+    setQuickAddOpen(false);
+    const dialog = mobileMoreDialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
+    setMobileMoreOpen(true);
+  }, []);
 
   const closeMenus = useCallback(() => {
-    setMenuOpen(false);
     setMoreOpen(false);
-  }, []);
+    closeMobileMore();
+  }, [closeMobileMore]);
 
   const runQuickAddAction = useCallback((action) => {
     setQuickAddOpen(false);
@@ -239,8 +261,8 @@ export default function Layout({ children }) {
 
   const openCommandPalette = useCallback(() => {
     setCommandOpen(true);
-    setMenuOpen(false);
-  }, []);
+    closeMobileMore();
+  }, [closeMobileMore]);
 
   const commandActions = useMemo(() => [
     {
@@ -631,25 +653,57 @@ export default function Layout({ children }) {
             </button>
             <span className="user-name">👤 {user?.displayName || user?.email}</span>
             <button className="btn btn-secondary header-logout" onClick={logout}>Đăng xuất</button>
-            <button className="menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-label="Mở menu điều hướng" aria-expanded={menuOpen}>☰</button>
           </div>
         </div>
       </header>
 
-      {menuOpen && (
-        <div className="mobile-nav">
-          {ALL_NAV.map(item => (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`mobile-nav-link ${isNavActive(item, location) ? 'active' : ''} ${item.path === '/sos' ? 'sos-link' : ''}`}
-              onClick={closeMenus}
-            >
-              {item.icon} {item.label}
-            </Link>
-          ))}
-        </div>
-      )}
+      <dialog
+        ref={mobileMoreDialogRef}
+        className="mobile-more-dialog"
+        aria-label="Điều hướng mở rộng"
+        onClose={() => setMobileMoreOpen(false)}
+        onClick={event => event.target === event.currentTarget && closeMobileMore()}
+      >
+        <section className="mobile-more-sheet" onClick={event => event.stopPropagation()}>
+          <header className="mobile-more-head">
+            <div>
+              <span>Điều hướng</span>
+              <strong>{user?.displayName || user?.email}</strong>
+            </div>
+            <button type="button" onClick={closeMobileMore} aria-label="Đóng danh sách trang">×</button>
+          </header>
+
+          <nav className="mobile-more-grid" aria-label="Các trang khác">
+            {MOBILE_MORE_NAV.map(item => {
+              const active = isNavActive(item, location);
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`mobile-more-link ${active ? 'active' : ''}`}
+                  onClick={closeMobileMore}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  <span aria-hidden="true">{item.icon}</span>
+                  <strong>{item.label}</strong>
+                </Link>
+              );
+            })}
+          </nav>
+
+          <button
+            type="button"
+            className="mobile-more-logout"
+            onClick={() => {
+              closeMobileMore();
+              logout();
+            }}
+          >
+            <span aria-hidden="true">🚪</span>
+            Đăng xuất
+          </button>
+        </section>
+      </dialog>
 
       {syncNotice && (
         <div className={`sync-notice ${syncNotice.type || 'warning'}`} role="status">
@@ -762,16 +816,32 @@ export default function Layout({ children }) {
       </div>
 
       <nav className="bottom-nav" aria-label="Điều hướng nhanh">
-        {MOBILE_NAV.map(item => (
-          <Link
-            key={item.path}
-            to={item.path}
-            className={`bottom-nav-link ${isNavActive(item, location) ? 'active' : ''} ${item.path === '/sos' ? 'sos-link' : ''}`}
-          >
-            <span className="bottom-nav-icon" aria-hidden="true">{item.icon}</span>
-            <span className="bottom-nav-label">{item.label}</span>
-          </Link>
-        ))}
+        {MOBILE_NAV.map(item => {
+          const active = isNavActive(item, location);
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`bottom-nav-link ${active ? 'active' : ''} ${item.path === '/sos' ? 'sos-link' : ''}`}
+              onClick={closeMobileMore}
+              aria-current={active ? 'page' : undefined}
+            >
+              <span className="bottom-nav-icon" aria-hidden="true">{item.icon}</span>
+              <span className="bottom-nav-label">{item.label}</span>
+            </Link>
+          );
+        })}
+        <button
+          type="button"
+          className={`bottom-nav-link bottom-nav-more ${mobileMoreActive || mobileMoreOpen ? 'active' : ''}`}
+          onClick={openMobileMore}
+          aria-label="Mở danh sách trang khác"
+          aria-haspopup="dialog"
+          aria-expanded={mobileMoreOpen}
+        >
+          <span className="bottom-nav-icon" aria-hidden="true">⋯</span>
+          <span className="bottom-nav-label">Thêm</span>
+        </button>
       </nav>
 
       <main className="main-content">{children}</main>
