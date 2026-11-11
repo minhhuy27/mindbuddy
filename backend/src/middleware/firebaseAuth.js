@@ -12,6 +12,8 @@ if (!admin.auth) {
   admin.auth = () => getAuth();
 }
 
+let firebaseAdminReady = false;
+
 if (!admin.apps.length) {
   try {
     const initConfig = {};
@@ -25,12 +27,27 @@ if (!admin.apps.length) {
     // If GOOGLE_APPLICATION_CREDENTIALS is set, admin.initializeApp() picks it up automatically
 
     admin.initializeApp(initConfig);
+    firebaseAdminReady = true;
+    console.log('Firebase Admin initialized successfully.');
   } catch (err) {
     console.error('Firebase Admin initialization error:', err.message);
+    console.warn('Auth verification will be skipped — all requests will be allowed.');
   }
+} else {
+  firebaseAdminReady = true;
 }
 
+/**
+ * Middleware: Verify Firebase Auth token (required).
+ * If Firebase Admin is not initialized, skip verification and allow request.
+ */
 async function verifyFirebaseToken(req, res, next) {
+  // If Firebase Admin is not ready, skip auth (dev/staging without credentials)
+  if (!firebaseAdminReady) {
+    req.user = null;
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Missing or invalid Authorization header' });
@@ -54,7 +71,15 @@ async function verifyFirebaseToken(req, res, next) {
   }
 }
 
+/**
+ * Middleware: Optional auth — allow unauthenticated requests.
+ */
 async function optionalAuth(req, res, next) {
+  if (!firebaseAdminReady) {
+    req.user = null;
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     req.user = null;
@@ -83,4 +108,5 @@ async function optionalAuth(req, res, next) {
 module.exports = {
   verifyFirebaseToken,
   optionalAuth,
+  firebaseAdminReady: () => firebaseAdminReady,
 };

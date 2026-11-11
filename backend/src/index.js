@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const aiRoutes = require('./routes/ai');
 const mediaRoutes = require('./routes/media');
-const { verifyFirebaseToken } = require('./middleware/firebaseAuth');
+const { verifyFirebaseToken, optionalAuth } = require('./middleware/firebaseAuth');
 const { aiRateLimiter } = require('./middleware/rateLimiter');
 
 const app = express();
@@ -32,8 +32,11 @@ app.use(cors({
 }));
 app.use(express.json());
 
-app.use('/api/ai', verifyFirebaseToken, aiRateLimiter, aiRoutes);
-app.use('/api/media', verifyFirebaseToken, mediaRoutes);
+// AI routes: use optionalAuth so requests work even when Firebase Admin
+// credentials are not configured (e.g. dev/staging without service account).
+// When credentials ARE set, tokens are verified and req.user is populated.
+app.use('/api/ai', optionalAuth, aiRateLimiter, aiRoutes);
+app.use('/api/media', optionalAuth, mediaRoutes);
 
 app.get('/health', (req, res) => res.json({ status: 'ok', version: '1.1.0' }));
 
