@@ -14,7 +14,17 @@ if (!admin.auth) {
 
 if (!admin.apps.length) {
   try {
-    admin.initializeApp();
+    const initConfig = {};
+
+    // Support FIREBASE_SERVICE_ACCOUNT_KEY as JSON string (for Render/Heroku)
+    // or GOOGLE_APPLICATION_CREDENTIALS as file path (for local dev)
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+      initConfig.credential = admin.credential.cert(serviceAccount);
+    }
+    // If GOOGLE_APPLICATION_CREDENTIALS is set, admin.initializeApp() picks it up automatically
+
+    admin.initializeApp(initConfig);
   } catch (err) {
     console.error('Firebase Admin initialization error:', err.message);
   }
