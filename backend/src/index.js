@@ -3,6 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const aiRoutes = require('./routes/ai');
 const mediaRoutes = require('./routes/media');
+const { verifyFirebaseToken } = require('./middleware/firebaseAuth');
+const { aiRateLimiter } = require('./middleware/rateLimiter');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -13,7 +15,7 @@ app.use(cors({
       process.env.FRONTEND_URL || 'http://localhost:3000',
       'http://localhost:3000',
     ];
-    // Cho phép Netlify subdomain và custom domain
+    // Allow Netlify subdomain and custom domain (mobile clients won't send Origin header)
     if (!origin || allowed.includes(origin) || origin.endsWith('.netlify.app')) {
       callback(null, true);
     } else {
@@ -30,10 +32,10 @@ app.use(cors({
 }));
 app.use(express.json());
 
-app.use('/api/ai', aiRoutes);
-app.use('/api/media', mediaRoutes);
+app.use('/api/ai', verifyFirebaseToken, aiRateLimiter, aiRoutes);
+app.use('/api/media', verifyFirebaseToken, mediaRoutes);
 
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/health', (req, res) => res.json({ status: 'ok', version: '1.1.0' }));
 
 app.listen(PORT, () => {
   console.log(`MindBuddy backend running on port ${PORT}`);

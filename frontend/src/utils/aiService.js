@@ -1,3 +1,5 @@
+import { getAuth } from 'firebase/auth';
+
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 const AI_TIMEOUT_MS = 70000;
 
@@ -23,6 +25,20 @@ const GOAL_LABELS = {
 
 function goalText(userGoal) {
   return GOAL_LABELS[userGoal] || userGoal || '';
+}
+
+async function getAuthHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  try {
+    const user = getAuth().currentUser;
+    if (user) {
+      const token = await user.getIdToken();
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  } catch (err) {
+    console.warn('Failed to get auth token:', err.message);
+  }
+  return headers;
 }
 
 function formatMetrics(metrics) {
@@ -63,7 +79,7 @@ export async function analyzeMood({ moodLabel, note, causes, metrics, recentMood
     const goal = goalText(userGoal);
     const res = await fetchWithTimeout(`${API_BASE}/ai/analyze`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
       body: JSON.stringify({ moodLabel, note, causes, metrics, recentMoods, aiMemory, userGoal: goal }),
     });
     if (!res.ok) return null;
@@ -95,7 +111,7 @@ export function createChat(initialAdvice, moodContext, existingMessages = [], ai
     try {
       const res = await fetchWithTimeout(`${API_BASE}/ai/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
         body: JSON.stringify({ messages: history, aiMemory, userGoal: goal }),
       });
       if (!res.ok) throw new Error('Server error');
@@ -126,7 +142,7 @@ export async function counselMindBuddy({
     const goal = goalText(userGoal);
     const res = await fetchWithTimeout(`${API_BASE}/ai/counsel`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
       body: JSON.stringify({
         mode,
         distressLevel,
@@ -158,7 +174,7 @@ export async function summarizeDay({ date, entries }) {
   try {
     const res = await fetchWithTimeout(`${API_BASE}/ai/summarize`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
       body: JSON.stringify({ date, entries }),
     });
     if (!res.ok) return null;
@@ -181,7 +197,7 @@ export async function reviewDay({ date, entries, pomodoros, userGoal }) {
     const goal = goalText(userGoal);
     const res = await fetchWithTimeout(`${API_BASE}/ai/daily-review`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
       body: JSON.stringify({ date, entries, pomodoros, userGoal: goal }),
     });
     if (!res.ok) return null;
@@ -218,7 +234,7 @@ export async function analyzeWeeklyTrend(moodLogs, MOODS, userGoal) {
     const goal = goalText(userGoal);
     const res = await fetchWithTimeout(`${API_BASE}/ai/weekly`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
       body: JSON.stringify({ moodSummary: recent, userGoal: goal }),
     });
     if (!res.ok) return null;
