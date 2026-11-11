@@ -1,21 +1,24 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import Layout from './components/Layout';
-import Dashboard from './pages/Dashboard';
-import DailyReview from './pages/DailyReview';
-import Needs from './pages/Needs';
-import Timeline from './pages/Timeline';
-import StorageManager from './pages/StorageManager';
-import Profile from './pages/Profile';
-import Counseling from './pages/Counseling';
-import MoodTracker from './pages/MoodTracker';
-import Pomodoro from './pages/Pomodoro';
-import Community from './pages/Community';
-import Garden from './pages/Garden';
-import SOS from './pages/SOS';
 import Login from './pages/Login';
+import LoadingSkeleton from './components/LoadingSkeleton';
+import InstallBanner from './components/InstallBanner';
 import './App.css';
+
+const Dashboard = React.lazy(() => import('./pages/Dashboard'));
+const DailyReview = React.lazy(() => import('./pages/DailyReview'));
+const Needs = React.lazy(() => import('./pages/Needs'));
+const Timeline = React.lazy(() => import('./pages/Timeline'));
+const StorageManager = React.lazy(() => import('./pages/StorageManager'));
+const Profile = React.lazy(() => import('./pages/Profile'));
+const Counseling = React.lazy(() => import('./pages/Counseling'));
+const MoodTracker = React.lazy(() => import('./pages/MoodTracker'));
+const Pomodoro = React.lazy(() => import('./pages/Pomodoro'));
+const Community = React.lazy(() => import('./pages/Community'));
+const Garden = React.lazy(() => import('./pages/Garden'));
+const SOS = React.lazy(() => import('./pages/SOS'));
 
 function JournalSyncState() {
   return (
@@ -70,24 +73,27 @@ function AppRoutes() {
   return (
     <Layout>
       {dataReady ? (
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/needs" element={<Needs />} />
-          <Route path="/timeline" element={<Timeline />} />
-          <Route path="/daily-review" element={<DailyReviewDetailRoute />} />
-          <Route path="/good-moments" element={<Navigate to="/timeline?view=positive" replace />} />
-          <Route path="/memories" element={<Navigate to="/timeline?view=media" replace />} />
-          <Route path="/storage" element={<StorageManager />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/counseling" element={<Counseling />} />
-          <Route path="/mood" element={<MoodTracker />} />
-          <Route path="/pomodoro" element={<Pomodoro />} />
-          <Route path="/community" element={<Community />} />
-          <Route path="/garden" element={<Garden />} />
-          <Route path="/sos" element={<SOS />} />
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
+        <Suspense fallback={<LoadingSkeleton />}>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/needs" element={<Needs />} />
+            <Route path="/timeline" element={<Timeline />} />
+            <Route path="/daily-review" element={<DailyReviewDetailRoute />} />
+            <Route path="/good-moments" element={<Navigate to="/timeline?view=positive" replace />} />
+            <Route path="/memories" element={<Navigate to="/timeline?view=media" replace />} />
+            <Route path="/storage" element={<StorageManager />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/counseling" element={<Counseling />} />
+            <Route path="/mood" element={<MoodTracker />} />
+            <Route path="/pomodoro" element={<Pomodoro />} />
+            <Route path="/community" element={<Community />} />
+            <Route path="/garden" element={<Garden />} />
+            <Route path="/sos" element={<SOS />} />
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        </Suspense>
       ) : <JournalSyncState />}
+      <InstallBanner />
     </Layout>
   );
 }

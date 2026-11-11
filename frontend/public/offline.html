@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MindBuddy – Không có kết nối</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f0f4ff;
+      color: #1a1a2e;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+    }
+    .offline-container { max-width: 400px; }
+    .offline-icon { font-size: 64px; margin-bottom: 24px; }
+    h1 { font-size: 24px; font-weight: 700; margin-bottom: 12px; color: #6c63ff; }
+    p { font-size: 16px; color: #636e72; line-height: 1.6; margin-bottom: 24px; }
+    .retry-btn {
+      display: inline-block; padding: 12px 32px;
+      background: #6c63ff; color: white; border: none; border-radius: 12px;
+      font-size: 16px; font-weight: 600; cursor: pointer; text-decoration: none;
+    }
+    .retry-btn:active { transform: scale(0.97); }
+  </style>
+</head>
+<body>
+  <div class="offline-container">
+    <div class="offline-icon">📡</div>
+    <h1>Không có kết nối mạng</h1>
+    <p>MindBuddy cần kết nối internet để đồng bộ dữ liệu. Hãy kiểm tra kết nối Wi-Fi hoặc dữ liệu di động rồi thử lại nhé.</p>
+    <button class="retry-btn" onclick="window.location.reload()">Thử lại</button>
+  </div>
+</body>
+</html>

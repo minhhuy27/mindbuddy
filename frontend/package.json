@@ -32,5 +32,9 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "^1.1.0",
+    "canvas": "npm:@napi-rs/canvas@^1.1.0"
   }
 }

@@ -1,7 +1,9 @@
 // Đăng ký service worker
 export async function registerSW() {
   if ('serviceWorker' in navigator) {
-    await navigator.serviceWorker.register('/sw.js');
+    const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    // Check for updates every 60 minutes
+    setInterval(() => registration.update(), 60 * 60 * 1000);
   }
 }
 
@@ -71,3 +73,34 @@ export function notifyPomodoroBreak() {
 export function notifyPomodoroResume() {
   notify('▶️ Hết giờ nghỉ!', 'Sẵn sàng tập trung tiếp chưa? Bắt đầu thôi! 💪');
 }
+
+// --- SW Update Detection ---
+export function onSWUpdate(callback) {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.ready.then((registration) => {
+    registration.addEventListener('updatefound', () => {
+      const newWorker = registration.installing;
+      if (!newWorker) return;
+      newWorker.addEventListener('statechange', () => {
+        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          // New SW installed, waiting to activate — notify the app
+          callback(registration);
+        }
+      });
+    });
+  });
+}
+
+export function skipWaitingAndReload() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.ready.then((registration) => {
+    if (registration.waiting) {
+      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    }
+  });
+  // Reload once the new SW takes control
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window.location.reload();
+  });
+}
+
