@@ -4,6 +4,31 @@ MindBuddy là ứng dụng nhật ký cá nhân kết hợp theo dõi cảm xúc
 
 > Cùng bạn vượt qua áp lực, kiến tạo tương lai.
 
+## 📱 PWA — Cài Đặt Trên Điện Thoại
+
+MindBuddy là **Progressive Web App (PWA)** — bạn có thể cài đặt trực tiếp trên điện thoại Android như một ứng dụng native, không cần tải từ Play Store.
+
+### Cách cài đặt trên Android Chrome
+
+1. Mở trang web MindBuddy trên Chrome
+2. Nhấn vào banner **"Cài đặt MindBuddy"** hiện ở trên cùng, hoặc:
+   - Nhấn menu **⋮** (3 chấm) góc phải trên
+   - Chọn **"Cài ứng dụng"** / **"Add to Home screen"**
+3. Nhấn **"Cài đặt"** / **"Install"**
+4. App sẽ xuất hiện trên màn hình chính
+
+### Tính năng PWA
+
+| Tính năng | Mô tả |
+| --- | --- |
+| 🔌 Offline | Xem lại dữ liệu đã cache khi mất mạng. AI requests tự động queue và gửi lại khi có mạng. |
+| 🔔 Thông báo | Nhắc check-in hàng ngày với nút hành động nhanh. |
+| 📸 Camera | Chụp ảnh trực tiếp từ camera khi ghi nhật ký. |
+| ↓ Pull-to-refresh | Kéo xuống để làm mới dữ liệu trên Dashboard và Timeline. |
+| 📤 Share Target | Chia sẻ ảnh/text từ app khác vào MindBuddy. |
+| 🔒 Wake Lock | Màn hình giữ sáng khi Pomodoro đang chạy. |
+| 👆 Touch-first | Touch targets ≥ 44px, haptic feedback, swipe navigation. |
+
 ## Tính Năng Chính
 
 | Khu vực | Mô tả |
@@ -28,35 +53,49 @@ MindBuddy là ứng dụng nhật ký cá nhân kết hợp theo dõi cảm xúc
 ```text
 MindBuddy/
 ├── frontend/
+│   ├── public/
+│   │   ├── manifest.json          # PWA manifest
+│   │   ├── sw.js                  # Workbox service worker
+│   │   ├── offline.html           # Offline fallback page
+│   │   ├── _headers               # Netlify caching headers
+│   │   └── icons/                 # PWA icons (72-512px)
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── Layout.js
+│   │   │   ├── Layout.js          # Navigation + swipe gestures
+│   │   │   ├── InstallBanner.js   # PWA install prompt
+│   │   │   ├── OfflineBanner.js   # Offline status indicator
+│   │   │   ├── PullToRefresh.js   # Pull-to-refresh gesture
+│   │   │   ├── UpdateToast.js     # SW update notification
 │   │   │   ├── CrisisPanel.js
 │   │   │   └── WeeklyInsight.js
+│   │   ├── hooks/
+│   │   │   ├── useInstallPrompt.js
+│   │   │   ├── useNetworkStatus.js
+│   │   │   ├── useWakeLock.js
+│   │   │   └── useStandaloneMode.js
 │   │   ├── context/
 │   │   │   └── AppContext.js
 │   │   ├── pages/
-│   │   │   ├── Dashboard.js
-│   │   │   ├── MoodTracker.js
+│   │   │   ├── Dashboard/         # Refactored (7 sub-components)
+│   │   │   ├── MoodTracker/       # Refactored (15 sub-components)
 │   │   │   ├── Counseling.js
 │   │   │   ├── DailyReview.js
-│   │   │   ├── Pomodoro.js
-│   │   │   ├── Needs.js
-│   │   │   ├── MediaCenter.js
-│   │   │   ├── StorageManager.js
-│   │   │   ├── Profile.js
-│   │   │   ├── GoodMoments.js
-│   │   │   ├── Community.js
-│   │   │   ├── Garden.js
-│   │   │   └── SOS.js
+│   │   │   ├── Pomodoro.js        # Wake lock + fullscreen mode
+│   │   │   ├── Timeline.js        # Pull-to-refresh
+│   │   │   └── ...
 │   │   └── utils/
-│   │       ├── aiService.js
+│   │       ├── aiService.js       # Auth headers + offline queue
+│   │       ├── offlineQueue.js    # IndexedDB queue + auto-replay
+│   │       ├── notifications.js   # SW-based notifications
 │   │       └── exportPDF.js
 │   └── package.json
 ├── backend/
 │   ├── src/
-│   │   ├── index.js
+│   │   ├── index.js               # Auth + rate limit middleware
 │   │   ├── aiClient.js
+│   │   ├── middleware/
+│   │   │   ├── firebaseAuth.js    # Firebase Admin token verification
+│   │   │   └── rateLimiter.js     # 30 req/min/user
 │   │   └── routes/
 │   │       ├── ai.js
 │   │       └── media.js
@@ -67,29 +106,30 @@ MindBuddy/
 
 ## Công Nghệ
 
-- Frontend: React 18, React Router 6, Recharts, date-fns.
-- Backend: Express, Groq SDK, Google Generative AI SDK.
-- Lưu dữ liệu: Firebase Auth, Firestore database `mindbuddy`, Firebase Storage.
+- Frontend: React 18 (CRA), React Router 6, Recharts, date-fns.
+- PWA: Workbox CDN service worker, Web App Manifest, offline persistence.
+- Backend: Express, Groq SDK, Google Generative AI SDK, Firebase Admin Auth middleware.
+- Lưu dữ liệu: Firebase Auth, Firestore database `mindbuddy` (offline IndexedDB persistence), Firebase Storage.
 - Xuất dữ liệu: jsPDF, jsPDF AutoTable, html2canvas.
-- Media: upload ảnh/video/audio, nén video qua backend bằng `ffmpeg-static` và `fluent-ffmpeg` khi dùng endpoint media.
+- Media: upload ảnh/video/audio, nén video qua backend bằng `ffmpeg-static` và `fluent-ffmpeg`.
 
 ## API Backend
 
-Backend chạy tại `/api` và có các nhóm endpoint chính:
+Backend chạy tại `/api` và có các nhóm endpoint chính. Tất cả `/api/ai/*` và `/api/media/*` yêu cầu Firebase Auth token trong header `Authorization: Bearer <token>`.
 
-| Endpoint | Mục đích |
-| --- | --- |
-| `POST /api/ai/analyze` | Phân tích nhanh sau check-in. |
-| `POST /api/ai/chat` | Chat AI trong trang Cảm xúc. |
-| `POST /api/ai/counsel` | AI cho trang Tư vấn. Ưu tiên Gemini, fallback Groq. |
-| `POST /api/ai/daily-review` | Tạo bản Nhìn lại ngày. |
-| `POST /api/ai/weekly` | Weekly insight. |
-| `POST /api/ai/summarize` | Tóm tắt ngày để lưu memory. |
-| `GET /api/ai/status` | Kiểm tra key Groq/Gemini đã cấu hình chưa. |
-| `/api/media/*` | Xử lý media/video ở backend. |
-| `GET /health` | Health check backend. |
+| Endpoint | Mục đích | Auth |
+| --- | --- | --- |
+| `POST /api/ai/analyze` | Phân tích nhanh sau check-in. | ✅ Required |
+| `POST /api/ai/chat` | Chat AI trong trang Cảm xúc. | ✅ Required |
+| `POST /api/ai/counsel` | AI cho trang Tư vấn. Ưu tiên Gemini, fallback Groq. | ✅ Required |
+| `POST /api/ai/daily-review` | Tạo bản Nhìn lại ngày. | ✅ Required |
+| `POST /api/ai/weekly` | Weekly insight. | ✅ Required |
+| `POST /api/ai/summarize` | Tóm tắt ngày để lưu memory. | ✅ Required |
+| `GET /api/ai/status` | Kiểm tra key Groq/Gemini đã cấu hình chưa. | Optional |
+| `/api/media/*` | Xử lý media/video ở backend. | ✅ Required |
+| `GET /health` | Health check backend. | — |
 
-Provider AI trả về trong response qua field `provider`, ví dụ `gemini`, `groq` hoặc `groq-fallback`. Trang Tư vấn cũng hiển thị provider sau khi AI trả lời.
+Rate limiting: 30 requests/phút/user cho AI endpoints.
 
 ## Cài Đặt Local
 
@@ -155,6 +195,7 @@ NODE_ENV=production
 FRONTEND_URL=https://your-netlify-site.netlify.app
 GROQ_API_KEY=your_groq_key
 GEMINI_API_KEY=your_gemini_key
+FIREBASE_SERVICE_ACCOUNT_KEY={"type":"service_account",...}
 ```
 
 Build command:

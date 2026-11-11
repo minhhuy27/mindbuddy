@@ -2,6 +2,19 @@
   command = "npm run build:netlify"
   publish = "build"
 
+# Service Worker must never be cached by CDN
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+# PWA manifest
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+    Cache-Control = "public, max-age=3600"
+
 # Redirect tất cả routes về index.html để React Router hoạt động
 [[redirects]]
   from = "/*"
