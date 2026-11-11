@@ -580,3 +580,23 @@
     flex-direction: column;
   }
 }
+
+@media (max-width: 768px) {
+  .timeline-filter-tabs button,
+  .timeline-load-more {
+    min-height: 44px;
+  }
+
+  .life-event-head a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .timeline-page img,
+  .timeline-page video,
+  .timeline-media-item img,
+  .timeline-media-item video {
+    max-width: 100%;
+  }
+}

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import useStandaloneMode from '../hooks/useStandaloneMode';
 import './Layout.css';
 
 const PRIMARY_NAV = [
@@ -28,6 +29,8 @@ const MOBILE_NAV = [
   ...PRIMARY_NAV.filter(item => ['/', '/mood', '/timeline'].includes(item.path)),
   SOS_NAV,
 ];
+const MOBILE_SWIPE_PATHS = MOBILE_NAV.map(item => item.path);
+const SWIPE_BLOCKED_SELECTOR = 'input, textarea, select, [role="slider"], .recharts-wrapper, .checkin-photo-grid, .media-attachments';
 const MOBILE_MORE_NAV = [
   ...PRIMARY_NAV.filter(item => ['/needs', '/pomodoro'].includes(item.path)),
   ...MORE_NAV,
@@ -135,6 +138,7 @@ function getBackupWeekKey(uid) {
 }
 
 export default function Layout({ children }) {
+  useStandaloneMode();
   const { user, logout, darkMode, setDarkMode, dataReady, syncNotice, clearSyncNotice, getCurrentUserRawData } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
@@ -150,6 +154,7 @@ export default function Layout({ children }) {
   const [backupReminderError, setBackupReminderError] = useState('');
   const commandInputRef = useRef(null);
   const mobileMoreDialogRef = useRef(null);
+  const swipeStartRef = useRef(null);
   const moreActive = MORE_NAV.some(item => isNavActive(item, location));
   const mobileMoreActive = MOBILE_MORE_NAV.some(item => isNavActive(item, location));
 
@@ -206,6 +211,46 @@ export default function Layout({ children }) {
     setMoreOpen(false);
     closeMobileMore();
   }, [closeMobileMore]);
+
+  const handleMainTouchStart = useCallback((event) => {
+    if (typeof window === 'undefined' || window.innerWidth > 768 || event.touches.length !== 1) {
+      swipeStartRef.current = null;
+      return;
+    }
+    const target = event.target;
+    if (target && typeof target.closest === 'function' && target.closest(SWIPE_BLOCKED_SELECTOR)) {
+      swipeStartRef.current = null;
+      return;
+    }
+    const touch = event.touches[0];
+    swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
+  }, []);
+
+  const handleMainTouchCancel = useCallback(() => {
+    swipeStartRef.current = null;
+  }, []);
+
+  const handleMainTouchEnd = useCallback((event) => {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start || typeof window === 'undefined' || window.innerWidth > 768 || !event.changedTouches?.length) {
+      return;
+    }
+
+    const currentIndex = MOBILE_SWIPE_PATHS.indexOf(location.pathname);
+    if (currentIndex === -1) return;
+
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    if (Math.abs(deltaX) <= 80 || Math.abs(deltaY) >= 45) return;
+
+    const nextIndex = deltaX < 0 ? currentIndex + 1 : currentIndex - 1;
+    if (nextIndex < 0 || nextIndex >= MOBILE_SWIPE_PATHS.length) return;
+
+    closeMenus();
+    navigate(MOBILE_SWIPE_PATHS[nextIndex]);
+  }, [closeMenus, location.pathname, navigate]);
 
   const runQuickAddAction = useCallback((action) => {
     setQuickAddOpen(false);
@@ -844,7 +889,16 @@ export default function Layout({ children }) {
         </button>
       </nav>
 
-      <main className="main-content">{children}</main>
+      <main
+        className="main-content"
+        onTouchStart={handleMainTouchStart}
+        onTouchEnd={handleMainTouchEnd}
+        onTouchCancel={handleMainTouchCancel}
+      >
+        <div key={location.pathname} className="mb-route-transition">
+          {children}
+        </div>
+      </main>
     </div>
   );
 }

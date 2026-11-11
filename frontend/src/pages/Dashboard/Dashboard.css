@@ -2011,3 +2011,33 @@
   background: var(--bg);
   border-color: var(--border);
 }
+
+@media (max-width: 768px) {
+  .quick-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .quick-mood-more-btn,
+  .quick-photo-btn,
+  .goal-option,
+  .dashboard-customize-trigger,
+  .dashboard-preset-btn,
+  .dashboard-reset-btn {
+    min-height: 44px;
+  }
+
+  .action-card {
+    min-height: 88px;
+  }
+
+  .dashboard-page img,
+  .dashboard-page video,
+  .dashboard-day-modal img,
+  .dashboard-day-modal video,
+  .memory-detail-gallery img,
+  .memory-detail-gallery video {
+    max-width: 100%;
+  }
+}

@@ -17,6 +17,7 @@ export default function useMoodMedia() {
   const [recordingSeconds, setRecordingSeconds] = useState(0);
 
   const imageInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const imagePreviewsRef = useRef([]);
   const mediaRecorderRef = useRef(null);
   const recordingStreamRef = useRef(null);
@@ -109,6 +110,7 @@ export default function useMoodMedia() {
     setImagePreviews(prev => [...prev, ...previews]);
     setRemoveExistingImage(false);
     if (imageInputRef.current) imageInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   const extractMediaFiles = (source) => {
@@ -133,6 +135,13 @@ export default function useMoodMedia() {
       return;
     }
     handleImageSelect({ target: { files } });
+  };
+
+  const addExternalFiles = (files) => {
+    const normalized = Array.from(files || []).filter(file => file instanceof File && file.size > 0);
+    if (!normalized.length) return false;
+    addMediaFilesFromExternalSource(normalized);
+    return true;
   };
 
   const handleMediaDragEnter = (event) => {
@@ -179,6 +188,7 @@ export default function useMoodMedia() {
     setImageFiles(prev => prev.filter((_, i) => i !== index));
     setImageError('');
     if (imageInputRef.current) imageInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   const removeExistingImageAt = (index) => {
@@ -288,6 +298,7 @@ export default function useMoodMedia() {
     setMediaDropActive(false);
     mediaDropDepthRef.current = 0;
     if (imageInputRef.current) imageInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   const loadExistingMedia = (attachments) => {
@@ -298,6 +309,7 @@ export default function useMoodMedia() {
     setRemoveExistingImage(false);
     setImageError('');
     if (imageInputRef.current) imageInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   return {
@@ -311,6 +323,8 @@ export default function useMoodMedia() {
     recordingState,
     recordingSeconds,
     imageInputRef,
+    cameraInputRef,
+    addExternalFiles,
     handleImageSelect,
     handleMediaDragEnter,
     handleMediaDragOver,

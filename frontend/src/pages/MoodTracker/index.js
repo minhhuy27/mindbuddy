@@ -36,6 +36,93 @@ import DayDetailModal from './DayDetailModal';
 import PhotoLightbox from './PhotoLightbox';
 import './MoodTracker.css';
 
+const SHARE_MIME_MAP = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  mp4: 'video/mp4',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
+  mp3: 'audio/mpeg',
+  m4a: 'audio/mp4',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  aac: 'audio/aac',
+};
+
+function inferShareMimeType(rawType, fileName) {
+  if (rawType && rawType !== 'application/octet-stream') {
+    return rawType.split(';')[0].trim();
+  }
+  const ext = String(fileName || '').split('.').pop()?.toLowerCase();
+  return (ext && SHARE_MIME_MAP[ext]) || rawType || 'application/octet-stream';
+}
+
+async function consumeShareTargetData(searchParams) {
+  let title = searchParams.get('title') || '';
+  let text = searchParams.get('text') || '';
+  let url = searchParams.get('url') || '';
+  const files = [];
+
+  if (typeof window !== 'undefined' && 'caches' in window) {
+    try {
+      const cacheNames = await window.caches.keys();
+      if (cacheNames.includes('mb-share-target')) {
+        const cache = await window.caches.open('mb-share-target');
+        const payloadRes = await cache.match('/share-payload.json');
+        let fileKeys = [];
+
+        if (payloadRes) {
+          const payload = await payloadRes.json().catch(() => null);
+          if (payload) {
+            if (!title && payload.title) title = payload.title;
+            if (!text && payload.text) text = payload.text;
+            if (!url && payload.url) url = payload.url;
+            if (Array.isArray(payload.fileKeys)) {
+              fileKeys = payload.fileKeys;
+            }
+          }
+        }
+
+        if (!fileKeys.length) {
+          const cachedRequests = await cache.keys();
+          fileKeys = cachedRequests
+            .map(req => new URL(req.url).pathname)
+            .filter(pathname => pathname.startsWith('/share-file-'));
+        }
+
+        for (let idx = 0; idx < fileKeys.length; idx += 1) {
+          const res = await cache.match(fileKeys[idx]);
+          if (!res) continue;
+          const blob = await res.blob();
+          if (!blob.size) continue;
+          const rawName = res.headers.get('X-Share-File-Name');
+          let fileName = `shared-file-${idx + 1}`;
+          if (rawName) {
+            try {
+              fileName = decodeURIComponent(rawName);
+            } catch {
+              fileName = rawName;
+            }
+          }
+          const mimeType = inferShareMimeType(res.headers.get('Content-Type') || blob.type, fileName);
+          files.push(new File([blob], fileName, { type: mimeType, lastModified: Date.now() }));
+        }
+
+        await window.caches.delete('mb-share-target');
+      }
+    } catch (err) {
+      console.warn('Share target cache read failed:', err?.message || err);
+    }
+  }
+
+  return { title, text, url, files };
+}
+
 export default function MoodTracker() {
   const {
     MOODS, customMoods, moodLogs,
@@ -353,7 +440,12 @@ export default function MoodTracker() {
     setActiveTab('today');
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
-    const timer = window.setTimeout(() => {
+    let cancelled = false;
+    let feedbackTimer = null;
+
+    const timer = window.setTimeout(async () => {
+      if (cancelled) return;
+
       if (quickAction === 'private') {
         setExcludeFromAI(true);
         setCheckinFeedback('Đang viết note riêng tư. Dòng này sẽ không được gửi cho AI.');
@@ -365,17 +457,47 @@ export default function MoodTracker() {
       } else if (quickAction === 'audio') {
         setCheckinFeedback('Đang mở ghi âm nhanh.');
         startAudioRecordingRef.current?.();
+      } else if (quickAction === 'share') {
+        const { title, text, url, files } = await consumeShareTargetData(searchParams);
+        if (cancelled) return;
+        const parts = [title, text].map(item => String(item || '').trim()).filter(Boolean);
+        const trimmedUrl = String(url || '').trim();
+        if (trimmedUrl && !parts.some(part => part.includes(trimmedUrl))) {
+          parts.push(trimmedUrl);
+        }
+        const sharedText = parts.join('\n');
+        if (sharedText) {
+          setNote(prev => (prev && prev.trim() ? `${prev.trimEnd()}\n\n${sharedText}` : sharedText));
+        }
+        if (files.length > 0) {
+          mediaRef.current.addExternalFiles(files);
+        }
+        setCheckinFeedback(
+          sharedText || files.length > 0
+            ? 'Đã nhận nội dung chia sẻ vào check-in hôm nay.'
+            : 'Chọn cảm xúc để bắt đầu check-in nhé.'
+        );
+        noteTextareaRef.current?.focus();
       } else {
         noteTextareaRef.current?.focus();
       }
 
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('quick');
+      if (quickAction === 'share') {
+        nextParams.delete('title');
+        nextParams.delete('text');
+        nextParams.delete('url');
+      }
       setSearchParams(nextParams, { replace: true });
-      window.setTimeout(() => setCheckinFeedback(''), 3600);
+      feedbackTimer = window.setTimeout(() => setCheckinFeedback(''), 3600);
     }, 180);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      if (feedbackTimer) window.clearTimeout(feedbackTimer);
+    };
   }, [searchParams, setSearchParams]);
 
   const openPhotoLightbox = (image, label, galleryItems = [], index = 0) => {

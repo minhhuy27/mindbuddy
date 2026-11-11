@@ -18,6 +18,7 @@ import RecentMemories from './RecentMemories';
 import QuickActions from './QuickActions';
 import PersonalPatterns from './PersonalPatterns';
 import GoalProgress from './GoalProgress';
+import PullToRefresh from '../../components/PullToRefresh';
 import './Dashboard.css';
 
 const GOALS = [
@@ -174,7 +175,7 @@ export default function Dashboard() {
   const {
     user, moodLogs, MOODS, customMoods, pomodoroCount, gardenLevel, earnedBadges, BADGES,
     getStreak, addMoodLog, userGoal, setUserGoal, goalOptions, currentGoal,
-    saveTodayAI, aiMemory, saveAiMemory,
+    saveTodayAI, aiMemory, saveAiMemory, reloadUserData,
   } = useApp();
   const [quickMood, setQuickMood] = React.useState(null);
   const [quickNote, setQuickNote] = React.useState('');
@@ -1200,7 +1201,8 @@ export default function Dashboard() {
   );
 
   return (
-    <div className={`dashboard dashboard-mode-${activeDashboardPreset.id}`}>
+    <PullToRefresh onRefresh={() => reloadUserData?.()}>
+      <div className={`dashboard dashboard-mode-${activeDashboardPreset.id}`}>
       <section className="today-hero">
         <div className="today-hero-copy">
           <span className="today-date">{format(today, "EEEE, dd/MM/yyyy", { locale: vi })}</span>
@@ -1389,6 +1391,7 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </PullToRefresh>
   );
 }

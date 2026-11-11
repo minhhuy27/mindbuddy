@@ -10,6 +10,93 @@ const { CacheFirst, NetworkFirst, StaleWhileRevalidate } = strategies;
 const { ExpirationPlugin } = expiration;
 const { CacheableResponsePlugin } = cacheableResponse;
 
+const SHARE_TARGET_CACHE = 'mb-share-target';
+const SHARE_PAYLOAD_KEY = '/share-payload.json';
+const CHECKIN_META_CACHE = 'mb-notif-meta';
+const CHECKIN_META_KEY = '/checkin-meta.json';
+const CHECKIN_ACTIONS = [
+  { action: 'checkin', title: '💭 Check-in ngay' },
+  { action: 'dismiss', title: 'Để sau' },
+];
+
+async function handleShareTargetPost(request) {
+  const redirectUrl = new URL('/mood', self.location.origin);
+  redirectUrl.searchParams.set('quick', 'share');
+
+  try {
+    const formData = await request.formData();
+    const rawTitle = formData.get('title');
+    const rawText = formData.get('text');
+    const rawUrl = formData.get('url');
+
+    const title = typeof rawTitle === 'string' ? rawTitle : '';
+    const text = typeof rawText === 'string' ? rawText : '';
+    const sharedUrl = typeof rawUrl === 'string' ? rawUrl : '';
+    const files = formData
+      .getAll('media')
+      .filter((entry) => entry instanceof File && entry.size > 0);
+
+    const cache = await caches.open(SHARE_TARGET_CACHE);
+    const existingKeys = await cache.keys();
+    await Promise.all(existingKeys.map((req) => cache.delete(req)));
+
+    const fileKeys = [];
+    for (let idx = 0; idx < files.length; idx += 1) {
+      const file = files[idx];
+      const fileKey = `/share-file-${idx}`;
+      fileKeys.push(fileKey);
+      await cache.put(
+        fileKey,
+        new Response(file, {
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+            'X-Share-File-Name': encodeURIComponent(file.name || 'shared-file'),
+          },
+        })
+      );
+    }
+
+    await cache.put(
+      SHARE_PAYLOAD_KEY,
+      new Response(
+        JSON.stringify({
+          title,
+          text,
+          url: sharedUrl,
+          fileKeys,
+        }),
+        {
+          headers: { 'Content-Type': 'application/json' },
+        }
+      )
+    );
+
+    if (title && title.length <= 200) {
+      redirectUrl.searchParams.set('title', title);
+    }
+    if (text && text.length <= 500) {
+      redirectUrl.searchParams.set('text', text);
+    }
+    if (sharedUrl && sharedUrl.length <= 500) {
+      redirectUrl.searchParams.set('url', sharedUrl);
+    }
+  } catch (err) {
+    // Redirect cleanly to share entry even if parsing fails
+  }
+
+  return Response.redirect(redirectUrl.toString(), 303);
+}
+
+// --- Web Share Target Level 2 POST Handler (registered before Workbox routes) ---
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'POST') return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname === '/mood' && url.searchParams.get('quick') === 'share') {
+    event.respondWith(handleShareTargetPost(event.request));
+  }
+});
+
 // --- App Shell: Cache the navigation (HTML pages) with NetworkFirst ---
 const htmlStrategy = new NetworkFirst({
   cacheName: 'mb-pages',
@@ -109,35 +196,114 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-// --- Notification Handling (preserved from original) ---
+// --- Notification Action & Click Handling ---
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const action = event.action;
-  let urlToOpen = '/';
 
-  if (action === 'checkin') {
-    urlToOpen = '/mood?tab=today&quick=mood';
+  if (action === 'dismiss') {
+    return;
   }
 
+  const targetPath =
+    action === 'checkin'
+      ? '/mood?tab=today&quick=mood'
+      : (event.notification.data?.url || '/');
+  const parsedUrl = new URL(targetPath, self.location.origin);
+  const targetUrl =
+    parsedUrl.origin === self.location.origin
+      ? parsedUrl.href
+      : `${self.location.origin}/`;
+
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Focus existing window if available
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
       for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          client.navigate(urlToOpen);
-          return client.focus();
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+          await client.focus();
+          if (client.url !== targetUrl && 'navigate' in client) {
+            try {
+              await client.navigate(targetUrl);
+            } catch (err) {
+              // Keep window focused even if client navigation is unsupported
+            }
+          }
+          return client;
         }
       }
-      // Otherwise open new window
-      return self.clients.openWindow(urlToOpen);
+      return self.clients.openWindow(targetUrl);
     })
   );
 });
 
-// --- SW Update Messaging ---
-// Listen for skip-waiting message from the app
+// --- Periodic Background Sync ---
+async function showPeriodicCheckinReminder() {
+  try {
+    const cache = await caches.open(CHECKIN_META_CACHE);
+    const metaRes = await cache.match(CHECKIN_META_KEY);
+    if (metaRes) {
+      const meta = await metaRes.json();
+      if (meta && meta.enabled === false) {
+        return;
+      }
+    }
+  } catch (err) {
+    // Proceed with notification if metadata cache is unreadable
+  }
+
+  await self.registration.showNotification('💭 Nhắc check-in cảm xúc', {
+    body: 'Hôm nay bạn cảm thấy thế nào? Hãy ghi lại nhé!',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-96.png',
+    tag: 'mb-daily-checkin',
+    renotify: true,
+    vibrate: [100, 50, 100],
+    data: { url: '/mood?tab=today&quick=mood' },
+    actions: CHECKIN_ACTIONS,
+  });
+}
+
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === 'mb-checkin-reminder') {
+    event.waitUntil(showPeriodicCheckinReminder());
+  }
+});
+
+// --- SW Update & Notification Messaging ---
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
+  const data = event.data;
+  if (!data || typeof data !== 'object') return;
+
+  if (data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+    return;
+  }
+
+  if (data.type === 'SHOW_NOTIFICATION' && data.title) {
+    const notifOptions = {
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-96.png',
+      ...(data.options && typeof data.options === 'object' ? data.options : {}),
+    };
+    event.waitUntil(self.registration.showNotification(data.title, notifOptions));
+    return;
+  }
+
+  if (data.type === 'CHECKIN_REMINDER_META') {
+    event.waitUntil(
+      caches.open(CHECKIN_META_CACHE).then((cache) =>
+        cache.put(
+          CHECKIN_META_KEY,
+          new Response(
+            JSON.stringify({
+              enabled: data.enabled !== false,
+              hour: data.hour,
+              minute: data.minute,
+              updatedAt: Date.now(),
+            }),
+            { headers: { 'Content-Type': 'application/json' } }
+          )
+        )
+      )
+    );
   }
 });

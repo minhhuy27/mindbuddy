@@ -200,3 +200,60 @@ h3 { font-size: 18px; font-weight: 600; }
 [data-theme="dark"] .timer-time { color: var(--text); }
 [data-theme="dark"] .timer-mode { color: var(--text-muted); }
 [data-theme="dark"] .mobile-nav-link { color: var(--text); }
+
+/* ===== MOBILE TOUCH, ANIMATIONS & STANDALONE POLISH ===== */
+html,
+body {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@keyframes mb-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mb-route-transition {
+  animation: mb-page-enter 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mb-route-transition {
+    animation: none;
+  }
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+@media (max-width: 768px) {
+  .btn,
+  button:not(.format-tool-btn):not(.mood-btn-delete):not(.journal-icon-btn):not(.toast-close),
+  a.btn {
+    min-height: 44px;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  .card {
+    border-radius: 16px;
+    padding: 16px;
+  }
+}
+
+[data-standalone="true"] .header {
+  padding-top: env(safe-area-inset-top, 0px);
+}

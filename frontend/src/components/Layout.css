@@ -963,14 +963,19 @@
   .header { display: block; }
   .desktop-nav { display: none; }
   .user-name { display: none; }
-  .header-inner { height: 56px; padding: 0 16px; }
+  .header-inner {
+    height: 56px;
+    padding: 0 16px;
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
   .header-right { gap: 8px; }
   .header-logout { display: none; }
   .main-content {
     width: 100%;
     min-height: auto;
     margin-left: 0;
-    padding: 16px 16px 88px;
+    padding: 16px 16px calc(92px + env(safe-area-inset-bottom, 0px));
   }
   .backup-reminder {
     width: calc(100% - 32px);
@@ -1182,6 +1187,10 @@
     font-size: 11px;
     font-weight: 600;
     padding: 0 2px;
+    transition: transform 0.16s ease, background-color 0.2s ease, color 0.2s ease;
+  }
+  .bottom-nav-link:active {
+    transform: scale(0.92);
   }
   .bottom-nav-link.active {
     background: var(--accent-purple);
@@ -1189,7 +1198,14 @@
   }
   .bottom-nav-link.sos-link { color: var(--danger); }
   .bottom-nav-link.sos-link.active { background: var(--accent-red); color: var(--danger); }
-  .bottom-nav-icon { font-size: 18px; line-height: 1; }
+  .bottom-nav-icon {
+    font-size: 18px;
+    line-height: 1;
+    transition: transform 0.16s ease;
+  }
+  .bottom-nav-link.active .bottom-nav-icon {
+    transform: scale(1.12);
+  }
   .bottom-nav-label {
     overflow: hidden;
     text-overflow: ellipsis;

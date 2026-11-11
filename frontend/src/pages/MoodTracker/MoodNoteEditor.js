@@ -166,14 +166,24 @@ export default function MoodNoteEditor({
             <strong>Tệp check-in</strong>
             <span>Thêm ảnh, video hoặc âm thanh để sau này nhớ ngữ cảnh hơn. Có thể kéo thả hoặc dán tệp vào đây.</span>
           </div>
-          <button
-            type="button"
-            className="btn-photo-select"
-            onClick={() => media.imageInputRef.current?.click()}
-            disabled={media.recordingState !== 'idle'}
-          >
-            📎 Chọn tệp
-          </button>
+          <div className="photo-field-actions">
+            <button
+              type="button"
+              className="btn-photo-select"
+              onClick={() => media.cameraInputRef.current?.click()}
+              disabled={media.recordingState !== 'idle'}
+            >
+              📸 Chụp ảnh
+            </button>
+            <button
+              type="button"
+              className="btn-photo-select"
+              onClick={() => media.imageInputRef.current?.click()}
+              disabled={media.recordingState !== 'idle'}
+            >
+              📎 Chọn tệp
+            </button>
+          </div>
         </div>
         <div className="quick-record-row">
           <button
@@ -196,6 +206,14 @@ export default function MoodNoteEditor({
             </div>
           )}
         </div>
+        <input
+          ref={media.cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={media.handleImageSelect}
+          hidden
+        />
         <input
           ref={media.imageInputRef}
           type="file"

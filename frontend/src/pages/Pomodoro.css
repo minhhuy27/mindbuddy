@@ -4,6 +4,86 @@
 
 .timer-card { display: flex; flex-direction: column; align-items: center; gap: 20px; }
 
+.timer-card-top {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.timer-card-spacer {
+  flex: 1;
+}
+
+.wakelock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--accent-purple);
+  color: var(--primary);
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border));
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.btn-fullscreen-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-left: auto;
+}
+
+.btn-fullscreen-toggle:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.timer-card.fullscreen-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  justify-content: center;
+  background: var(--bg);
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  overflow-y: auto;
+  padding: calc(24px + env(safe-area-inset-top, 0px)) 20px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+.timer-card.fullscreen-mode .timer-card-top {
+  width: min(560px, 100%);
+}
+
+.timer-card.fullscreen-mode .timer-circle {
+  width: 272px;
+  height: 272px;
+}
+
+.timer-card.fullscreen-mode .timer-time {
+  font-size: 60px;
+}
+
+@media (max-height: 680px) {
+  .timer-card.fullscreen-mode {
+    justify-content: flex-start;
+  }
+}
+
 .mode-tabs { display: flex; gap: 8px; background: var(--bg); padding: 4px; border-radius: 12px; }
 .mode-tab {
   padding: 8px 20px; border-radius: 10px; border: none;
@@ -323,6 +403,17 @@
   .pomodoro-layout { grid-template-columns: 1fr; }
 }
 
+@media (max-width: 768px) {
+  .mode-tab,
+  .timer-controls .btn,
+  .btn-fullscreen-toggle,
+  .sound-btn,
+  .after-feeling-grid button,
+  .smart-pomodoro-actions .btn {
+    min-height: 46px;
+  }
+}
+
 @media (max-width: 620px) {
   .smart-pomodoro-card {
     grid-template-columns: auto minmax(0, 1fr);
@@ -363,3 +454,18 @@
 [data-theme="dark"] .content-item { border-color: var(--border); }
 [data-theme="dark"] .content-title { color: var(--text); }
 [data-theme="dark"] .session-count { color: var(--text-muted); }
+[data-theme="dark"] .timer-card.fullscreen-mode { background: var(--bg); }
+[data-theme="dark"] .wakelock-badge {
+  background: var(--accent-purple);
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+}
+[data-theme="dark"] .btn-fullscreen-toggle {
+  background: var(--card);
+  color: var(--text);
+  border-color: var(--border);
+}
+[data-theme="dark"] .btn-fullscreen-toggle:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}

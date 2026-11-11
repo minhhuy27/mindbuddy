@@ -2012,3 +2012,47 @@
     grid-template-columns: 1fr;
   }
 }
+
+.photo-field-actions,
+.photo-capture-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .mood-btn,
+  .cause-btn,
+  .btn-photo-select,
+  .btn-audio-record {
+    min-height: 44px;
+  }
+
+  .photo-field-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .checkin-photo-preview img,
+  .checkin-photo-preview video,
+  .checkin-photo-preview audio {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .checkin-photo-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .photo-field-actions,
+  .photo-capture-actions {
+    width: 100%;
+  }
+
+  .photo-field-actions > button,
+  .photo-capture-actions > button {
+    flex: 1 1 auto;
+  }
+}

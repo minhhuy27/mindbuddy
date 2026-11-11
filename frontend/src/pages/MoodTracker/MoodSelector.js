@@ -8,6 +8,13 @@ export default function MoodSelector({
   onOpenModal,
   onDeleteCustomMood,
 }) {
+  const handleMoodSelect = (moodId) => {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(10);
+    }
+    onSelect(moodId);
+  };
+
   return (
     <>
       {/* Built-in moods */}
@@ -20,7 +27,7 @@ export default function MoodSelector({
             style={{ '--mood-color': m.color }}
             aria-pressed={selected === m.id}
             aria-label={`Chọn cảm xúc ${m.label}`}
-            onClick={() => onSelect(m.id)}
+            onClick={() => handleMoodSelect(m.id)}
           >
             <span className="mood-emoji">{m.emoji}</span>
             <span className="mood-label">{m.label}</span>
@@ -58,7 +65,7 @@ export default function MoodSelector({
                   style={{ '--mood-color': m.color }}
                   aria-pressed={selected === m.id}
                   aria-label={`Chọn cảm xúc tùy chỉnh ${m.label}`}
-                  onClick={() => onSelect(m.id)}
+                  onClick={() => handleMoodSelect(m.id)}
                 >
                   <span className="mood-emoji">{m.emoji}</span>
                   <span className="mood-label">{m.label}</span>

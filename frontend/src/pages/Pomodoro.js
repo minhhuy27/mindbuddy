@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { notifyPomodoroBreak, notifyPomodoroResume } from '../utils/notifications';
+import useWakeLock from '../hooks/useWakeLock';
 import './Pomodoro.css';
 
 const SOUNDS = [
@@ -116,11 +117,13 @@ function buildSmartRecommendation(metrics) {
 
 export default function Pomodoro() {
   const { incrementPomodoro, pomodoroCount, user, moodLogs } = useApp();
+  const { isActive: wakeLockActive, requestWakeLock, releaseWakeLock } = useWakeLock();
   const location = useLocation();
   const navigate = useNavigate();
   const [mode, setMode] = useState('work'); // work | break
   const [timeLeft, setTimeLeft] = useState(25 * 60);
   const [running, setRunning] = useState(false);
+  const [focusFullscreen, setFocusFullscreen] = useState(false);
   const [workMin, setWorkMin] = useState(25);
   const [breakMin, setBreakMin] = useState(5);
   const [sound, setSound] = useState('none');
@@ -336,6 +339,30 @@ export default function Pomodoro() {
     if (mode === 'work' && !running) setTimeLeft(nextDuration * 60);
   };
 
+  useEffect(() => {
+    if (running) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+  }, [running, requestWakeLock, releaseWakeLock]);
+
+  useEffect(() => {
+    if (!focusFullscreen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setFocusFullscreen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [focusFullscreen]);
+
   const mm = String(Math.floor(timeLeft / 60)).padStart(2, '0');
   const ss = String(timeLeft % 60).padStart(2, '0');
   const progress = mode === 'work'
@@ -352,11 +379,27 @@ export default function Pomodoro() {
     : null;
 
   return (
-    <div className="pomodoro-page">
+    <div className={`pomodoro-page ${focusFullscreen ? 'focus-fullscreen' : ''}`}>
       <h2 className="mb-4">🍅 Smart Pomodoro</h2>
 
       <div className="pomodoro-layout">
-        <div className="card timer-card">
+        <div className={`card timer-card ${focusFullscreen ? 'fullscreen-mode' : ''}`}>
+          <div className="timer-card-top">
+            {wakeLockActive ? (
+              <span className="wakelock-badge" role="status">🔆 Đang giữ sáng màn hình</span>
+            ) : (
+              <span className="timer-card-spacer" aria-hidden="true" />
+            )}
+            <button
+              type="button"
+              className="btn-fullscreen-toggle"
+              onClick={() => setFocusFullscreen(prev => !prev)}
+              aria-pressed={focusFullscreen}
+            >
+              {focusFullscreen ? '✕ Thu gọn' : '⛶ Toàn màn hình'}
+            </button>
+          </div>
+
           <div className="mode-tabs">
             <button className={`mode-tab ${mode === 'work' ? 'active' : ''}`} onClick={() => { setMode('work'); setTimeLeft(workMin * 60); setRunning(false); setActiveSession(null); }}>
               🎯 Tập trung

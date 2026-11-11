@@ -6,6 +6,7 @@ import { useApp } from '../context/AppContext';
 import RichText from '../components/RichText';
 import { causeTagStyle, causeTagTitle } from '../utils/causeTags';
 import { displayAttachmentName, normalizeMoodAttachments } from '../utils/moodImages';
+import PullToRefresh from '../components/PullToRefresh';
 import './Timeline.css';
 
 const FILTERS = [
@@ -388,7 +389,7 @@ function PomodoroEvent({ event }) {
 }
 
 export default function Timeline() {
-  const { user, moodLogs, MOODS, customMoods, dailyReviews } = useApp();
+  const { user, moodLogs, MOODS, customMoods, dailyReviews, reloadUserData } = useApp();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = React.useState(() => normalizeFilter(searchParams.get('view')));
   const [query, setQuery] = React.useState('');
@@ -491,7 +492,8 @@ export default function Timeline() {
   }, [events]);
 
   return (
-    <div className="timeline-page">
+    <PullToRefresh onRefresh={() => reloadUserData?.()}>
+      <div className="timeline-page">
       <section className="timeline-hero">
         <div>
           <span className="timeline-kicker">Timeline trung tâm</span>
@@ -565,6 +567,7 @@ export default function Timeline() {
           )}
         </section>
       )}
-    </div>
+      </div>
+    </PullToRefresh>
   );
 }
