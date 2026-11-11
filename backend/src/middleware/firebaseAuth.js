@@ -1,20 +1,11 @@
-const admin = require('firebase-admin');
 const { getAuth } = require('firebase-admin/auth');
-
-// Compatibility wrapper for admin.apps and admin.auth in firebase-admin v13+
-if (!admin.apps) {
-  Object.defineProperty(admin, 'apps', {
-    get: () => (admin.getApps ? admin.getApps() : []),
-  });
-}
-
-if (!admin.auth) {
-  admin.auth = () => getAuth();
-}
+const { cert, getApps, initializeApp } = require('firebase-admin/app');
 
 let firebaseAdminReady = false;
 
-if (!admin.apps.length) {
+// Initialize Firebase Admin with service account credentials
+const existingApps = getApps();
+if (existingApps.length === 0) {
   try {
     const initConfig = {};
 
@@ -22,11 +13,11 @@ if (!admin.apps.length) {
     // or GOOGLE_APPLICATION_CREDENTIALS as file path (for local dev)
     if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
-      initConfig.credential = admin.credential.cert(serviceAccount);
+      initConfig.credential = cert(serviceAccount);
     }
-    // If GOOGLE_APPLICATION_CREDENTIALS is set, admin.initializeApp() picks it up automatically
+    // If GOOGLE_APPLICATION_CREDENTIALS is set, initializeApp() picks it up automatically
 
-    admin.initializeApp(initConfig);
+    initializeApp(initConfig);
     firebaseAdminReady = true;
     console.log('Firebase Admin initialized successfully.');
   } catch (err) {
@@ -59,7 +50,7 @@ async function verifyFirebaseToken(req, res, next) {
   }
 
   try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const decodedToken = await getAuth().verifyIdToken(idToken);
     req.user = {
       uid: decodedToken.uid,
       email: decodedToken.email || null,
@@ -93,7 +84,7 @@ async function optionalAuth(req, res, next) {
   }
 
   try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const decodedToken = await getAuth().verifyIdToken(idToken);
     req.user = {
       uid: decodedToken.uid,
       email: decodedToken.email || null,
