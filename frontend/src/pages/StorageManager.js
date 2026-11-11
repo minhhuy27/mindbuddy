@@ -228,7 +228,7 @@ export default function StorageManager() {
               <article key={item.id} className="storage-file-row">
                 <div className="storage-file-preview">
                   {item.attachment.kind === 'image' ? (
-                    <img src={item.attachment.url} alt={item.displayName} loading="lazy" />
+                    <img src={item.attachment.url} alt={item.displayName} loading="lazy" decoding="async" />
                   ) : item.attachment.kind === 'video' ? (
                     <video src={item.attachment.url} muted preload="metadata" />
                   ) : (

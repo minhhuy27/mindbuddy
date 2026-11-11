@@ -1,17 +1,23 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { useApp } from '../context/AppContext';
-import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { useApp } from '../../context/AppContext';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { format, subDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import NotificationSettings from '../components/NotificationSettings';
-import WeeklyInsight from '../components/WeeklyInsight';
-import CrisisPanel from '../components/CrisisPanel';
-import RichText from '../components/RichText';
-import MediaAttachments from '../components/MediaAttachments';
-import { analyzeMood, detectDanger, summarizeDay } from '../utils/aiService';
-import { uploadMoodFiles } from '../utils/imageUpload';
-import { displayAttachmentName, normalizeMoodAttachments } from '../utils/moodImages';
+import NotificationSettings from '../../components/NotificationSettings';
+import WeeklyInsight from '../../components/WeeklyInsight';
+import CrisisPanel from '../../components/CrisisPanel';
+import RichText from '../../components/RichText';
+import MediaAttachments from '../../components/MediaAttachments';
+import { analyzeMood, detectDanger, summarizeDay } from '../../utils/aiService';
+import { uploadMoodFiles } from '../../utils/imageUpload';
+import { normalizeMoodAttachments } from '../../utils/moodImages';
+import TodayCheckin from './TodayCheckin';
+import WeeklyMoodChart from './WeeklyMoodChart';
+import RecentMemories from './RecentMemories';
+import QuickActions from './QuickActions';
+import PersonalPatterns from './PersonalPatterns';
+import GoalProgress from './GoalProgress';
 import './Dashboard.css';
 
 const GOALS = [
@@ -82,14 +88,6 @@ const DEFAULT_DASHBOARD_PRESET = 'balanced';
 const DEFAULT_DASHBOARD_LAYOUT = createDashboardLayout(
   DASHBOARD_PRESETS.find(preset => preset.id === DEFAULT_DASHBOARD_PRESET)?.blockIds
 );
-
-const QUICK_FORMAT_TOOLS = [
-  { id: 'bold', label: 'B', title: 'Bôi đậm', prefix: '**', suffix: '**', sample: 'nội dung quan trọng' },
-  { id: 'underline', label: 'U', title: 'Gạch chân', prefix: '<u>', suffix: '</u>', sample: 'điều cần nhớ' },
-  { id: 'heading', label: 'H', title: 'Tiêu đề', linePrefix: '## ', sample: 'Tiêu đề nhỏ' },
-  { id: 'checklist', label: '☑', title: 'Checklist', linePrefix: '- [ ] ', sample: 'việc nhỏ cần làm' },
-  { id: 'quote', label: '❝', title: 'Trích dẫn', linePrefix: '> ', sample: 'một câu mình muốn giữ lại' },
-];
 
 const ENERGY_BUCKETS = [
   { id: 'morning', label: 'Sáng', short: 'Sáng', range: '05:00-11:59' },
@@ -328,7 +326,7 @@ export default function Dashboard() {
       .flatMap(log => {
         const mood = allMoods.find(m => m.id === log.mood);
         const attachments = normalizeMoodAttachments(log);
-        const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
+        const cleaned = log.note?.replace(/\s*\[.+\]$/, '') || '';
         const causeTags = log.note?.match(/\[(.+)\]$/)?.[1]?.split(', ') || [];
         return attachments.map((attachment, attachmentIndex) => ({
           ...log,
@@ -338,7 +336,7 @@ export default function Dashboard() {
           attachment,
           attachmentIndex,
           attachments,
-          cleanNote,
+          cleanNote: cleaned,
           causeTags,
         }));
       })
@@ -778,8 +776,8 @@ export default function Dashboard() {
           .map(l => {
             const m = allMoods.find(x => x.id === l.mood);
             const causesInNote = l.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
-            const cleanNote = l.note?.replace(/\s*\[.+\]$/, '') || '';
-            return { moodLabel: m?.label || 'Không rõ', note: cleanNote, causes: causesInNote, metrics: l.metrics };
+            const cleanedNote = l.note?.replace(/\s*\[.+\]$/, '') || '';
+            return { moodLabel: m?.label || 'Không rõ', note: cleanedNote, causes: causesInNote, metrics: l.metrics };
           }),
       ];
 
@@ -853,94 +851,27 @@ export default function Dashboard() {
       setQuickAnalyzing(false);
     }
   };
+
   const renderDashboardBlock = (blockId) => {
     if (blockId === 'week') {
       return (
-        <section key={blockId} className="card week-overview-card dashboard-custom-block">
-          <div className="section-heading-row">
-            <div>
-              <h3>Tuần này nhìn nhanh</h3>
-              <p className="text-muted">
-                {weekAverage
-                  ? `Điểm mood trung bình ${weekAverage}/5${weekDirection > 0 ? ', đang đi lên.' : weekDirection < 0 ? ', đang giảm nhẹ.' : ', khá ổn định.'}`
-                  : 'Chưa đủ dữ liệu để thấy xu hướng.'}
-              </p>
-            </div>
-            <Link to="/mood?tab=history" className="quick-link">Xem lịch sử</Link>
-          </div>
-
-          <div className="week-strip" aria-label="Cảm xúc 7 ngày qua">
-            {last7.map(day => (
-              <button
-                key={day.fullDate}
-                type="button"
-                className={`week-day ${day.hasData ? 'has-data' : ''}`}
-                style={{ '--mood-color': day.mood?.color || 'var(--border)' }}
-                disabled={!day.logs.length}
-                onClick={() => setSelectedDayDetail({ dayKey: day.key, logs: day.logs })}
-                aria-label={day.hasData
-                  ? `Xem ${day.logs.length} ghi chú ngày ${day.fullDate}, cảm xúc mới nhất ${day.mood?.label}`
-                  : `Ngày ${day.fullDate} chưa có ghi chú`}
-              >
-                <span className="week-label">{day.date}</span>
-                <span
-                  className="week-dot"
-                  style={{ '--mood-color': day.mood?.color || 'var(--border)' }}
-                  title={day.hasData ? `${day.fullDate}: ${day.mood?.label}` : `${day.fullDate}: chưa ghi`}
-                >
-                  {day.mood?.emoji || ''}
-                </span>
-                <small>{day.fullDate}</small>
-              </button>
-            ))}
-          </div>
-        </section>
+        <WeeklyMoodChart
+          key={blockId}
+          last7={last7}
+          weekAverage={weekAverage}
+          weekDirection={weekDirection}
+          onDayClick={setSelectedDayDetail}
+        />
       );
     }
 
     if (blockId === 'memories') {
       return (
-        <section key={blockId} className="card recent-memories-card dashboard-custom-block">
-          <div className="section-heading-row">
-            <div>
-              <h3>Tệp gần đây</h3>
-              <p className="text-muted">Bấm vào tệp để mở lại cảm xúc và ghi chú đi kèm.</p>
-            </div>
-            <Link to="/mood?tab=history" className="quick-link">Mở lịch sử</Link>
-          </div>
-
-          {recentPhotoLogs.length > 0 ? (
-            <div className="memory-photo-strip" aria-label="Tệp check-in gần đây">
-              {recentPhotoLogs.map(log => (
-                <button
-                  key={log.photoId}
-                  type="button"
-                  className="memory-photo-tile"
-                  onClick={() => setSelectedMemory(log)}
-                  aria-label={`Mở ghi chú tệp ngày ${format(new Date(log.date), 'dd/MM/yyyy')} lúc ${format(new Date(log.date), 'HH:mm')}`}
-                >
-                  {log.attachment?.kind === 'video' ? (
-                    <video src={log.imageUrl} muted preload="metadata" />
-                  ) : log.attachment?.kind === 'audio' ? (
-                    <div className="memory-media-placeholder">Audio</div>
-                  ) : (
-                    <img src={log.imageUrl} alt={`Tệp check-in ${log.mood?.label || 'không rõ'} lúc ${format(new Date(log.date), 'HH:mm')}`} />
-                  )}
-                  <span>{format(new Date(log.date), 'dd/MM')}{log.attachments.length > 1 ? ` · ${log.attachmentIndex + 1}/${log.attachments.length}` : ''}</span>
-                  <strong>{log.mood?.emoji} {log.mood?.label || 'Không rõ'}</strong>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="memory-empty">
-              <span aria-hidden="true">🖼️</span>
-              <div>
-                <strong>Chưa có tệp check-in</strong>
-                <p>Lần tới khi ghi cảm xúc, thêm một ảnh, video hoặc ghi âm ngắn để MindBuddy lưu lại ngữ cảnh của ngày đó.</p>
-              </div>
-            </div>
-          )}
-        </section>
+        <RecentMemories
+          key={blockId}
+          recentPhotoLogs={recentPhotoLogs}
+          onMemoryClick={setSelectedMemory}
+        />
       );
     }
 
@@ -1029,69 +960,20 @@ export default function Dashboard() {
 
     if (blockId === 'patterns') {
       return (
-        <section key={blockId} className="card personal-patterns-card dashboard-custom-block">
-          <div className="section-heading-row">
-            <div>
-              <h3>Pattern cá nhân</h3>
-              <p className="text-muted">MindBuddy nhắc lại những mẫu lặp nhỏ từ check-in, Pomodoro và chỉ số phụ.</p>
-            </div>
-            <Link to="/mood?tab=history" className="quick-link">Xem dữ liệu</Link>
-          </div>
-
-          {personalPatterns.length > 0 ? (
-            <div className="personal-pattern-grid">
-              {personalPatterns.map(pattern => (
-                <Link key={pattern.id} to={pattern.to} className="personal-pattern-item">
-                  <span className="pattern-icon" aria-hidden="true">{pattern.icon}</span>
-                  <div>
-                    <strong>{pattern.title}</strong>
-                    <p>{pattern.text}</p>
-                    <small>{pattern.evidence}</small>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <div className="personal-pattern-empty">
-              <span aria-hidden="true">🧩</span>
-              <div>
-                <strong>Chưa đủ dữ liệu để nhận ra pattern rõ ràng</strong>
-                <p>Ghi thêm nguyên nhân, stress/ngủ/focus và vài phiên Pomodoro để MindBuddy nhắc lại các mẫu lặp đáng chú ý.</p>
-              </div>
-              <Link to="/mood" className="btn btn-primary">Ghi thêm</Link>
-            </div>
-          )}
-        </section>
+        <PersonalPatterns
+          key={blockId}
+          personalPatterns={personalPatterns}
+        />
       );
     }
 
     if (blockId === 'tools') {
       return (
-        <section key={blockId} className="quick-actions today-tools dashboard-custom-block">
-          <div className="section-heading-row mb-3">
-            <div>
-              <h3>Công cụ cho hôm nay</h3>
-              <p className="text-muted">Các lối tắt bạn có thể dùng ngay trong ngày.</p>
-            </div>
-          </div>
-          <div className="actions-grid">
-            {[
-              { to: '/mood', icon: '💭', label: latestTodayMood ? 'Ghi thêm cảm xúc' : 'Ghi cảm xúc', color: '#a29bfe', primary: true },
-              { to: '/needs', icon: '🧭', label: 'Mình cần gì?', color: '#00cec9' },
-              { to: todayReviewPath, icon: '🪞', label: 'Nhìn lại ngày', color: '#00cec9' },
-              { to: '/timeline?view=positive', icon: '✨', label: 'Khoảnh khắc tốt', color: '#fdcb6e' },
-              { to: '/pomodoro', icon: '🍅', label: 'Tập trung', color: '#fd79a8' },
-              { to: '/garden', icon: '🌱', label: 'Chăm vườn', color: '#55efc4' },
-              { to: '/community', icon: '🌍', label: 'Góc chia sẻ', color: '#74b9ff' },
-              { to: '/sos', icon: '🆘', label: 'S.O.S', color: '#e17055' },
-            ].map(a => (
-              <Link key={a.to} to={a.to} className={`action-card ${a.primary ? 'primary-action' : ''}`} style={{ '--action-color': a.color }} aria-label={a.label}>
-                <span className="action-icon" aria-hidden="true">{a.icon}</span>
-                <span className="action-label">{a.label}</span>
-              </Link>
-            ))}
-          </div>
-        </section>
+        <QuickActions
+          key={blockId}
+          latestTodayMood={latestTodayMood}
+          todayReviewPath={todayReviewPath}
+        />
       );
     }
 
@@ -1227,65 +1109,15 @@ export default function Dashboard() {
 
     if (blockId === 'moodGoal') {
       return (
-        <section key={blockId} className="dashboard-focus-grid secondary-dashboard-grid dashboard-custom-block">
-          <div className="card mood-chart-card">
-            <h3 className="mb-3">Biểu đồ cảm xúc 7 ngày</h3>
-            {moodLogs.length > 0 ? (
-              <ResponsiveContainer width="100%" height={180}>
-                <LineChart data={last7}>
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                  <YAxis domain={[0, 5]} hide />
-                  <Tooltip formatter={(v, name, props) => {
-                    if (!props.payload.hasData) return ['Chưa có dữ liệu', ''];
-                    const m = props.payload.mood || allMoods.find(m => m.score === v);
-                    return [m ? `${m.emoji} ${m.label}` : v, 'Cảm xúc'];
-                  }} />
-                  <Line
-                    type="monotone"
-                    dataKey="score"
-                    stroke="#6c63ff"
-                    strokeWidth={2.5}
-                    dot={(props) => {
-                      const { cx, cy, payload } = props;
-                      if (!payload.hasData) return null;
-                      return <circle key={`dot-${cx}-${cy}`} cx={cx} cy={cy} r={4} fill="#6c63ff" />;
-                    }}
-                    connectNulls={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="empty-state rich-empty">
-                <div className="empty-icon" aria-hidden="true">💭</div>
-                <h4>Chưa có dữ liệu cảm xúc</h4>
-                <p>Ghi cảm xúc đầu tiên để biểu đồ bắt đầu có ý nghĩa.</p>
-                <Link to="/mood" className="btn btn-primary">Ghi cảm xúc đầu tiên</Link>
-              </div>
-            )}
-          </div>
-
-          <div className="card goal-widget">
-            <div className="section-heading-row">
-              <div>
-                <h3>Mục tiêu cá nhân</h3>
-                <p className="text-muted">MindBuddy sẽ ưu tiên insight và lời khuyên theo mục tiêu này.</p>
-              </div>
-            </div>
-            <div className="goal-options">
-              {activeGoals.map(goal => (
-                <button
-                  key={goal.id}
-                  className={`goal-option ${userGoal === goal.id ? 'active' : ''}`}
-                  onClick={() => setUserGoal(goal.id)}
-                  aria-pressed={userGoal === goal.id}
-                >
-                  <strong>{goal.label}</strong>
-                  <span>{goal.desc}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
+        <GoalProgress
+          key={blockId}
+          last7={last7}
+          allMoods={allMoods}
+          hasMoodLogs={moodLogs.length > 0}
+          activeGoals={activeGoals}
+          userGoal={userGoal}
+          setUserGoal={setUserGoal}
+        />
       );
     }
 
@@ -1338,31 +1170,31 @@ export default function Dashboard() {
         ))}
       </div>
       <div className="dashboard-block-manager" aria-label="Tùy biến các khối trên Trang chủ">
-      {dashboardLayout.map((item, index) => {
-        const block = DASHBOARD_BLOCKS.find(entry => entry.id === item.id);
-        if (!block) return null;
-        return (
-          <div key={item.id} className={`dashboard-block-control ${item.visible ? '' : 'is-hidden'}`}>
-            <label>
-              <input
-                type="checkbox"
-                checked={item.visible}
-                onChange={() => toggleDashboardBlock(item.id)}
-              />
-              <span aria-hidden="true">{block.icon}</span>
-              <strong>{block.label}</strong>
-            </label>
-            <div>
-              <button type="button" onClick={() => moveDashboardBlock(item.id, -1)} disabled={index === 0} aria-label={`Đưa ${block.label} lên trên`}>
-                ↑
-              </button>
-              <button type="button" onClick={() => moveDashboardBlock(item.id, 1)} disabled={index === dashboardLayout.length - 1} aria-label={`Đưa ${block.label} xuống dưới`}>
-                ↓
-              </button>
+        {dashboardLayout.map((item, index) => {
+          const block = DASHBOARD_BLOCKS.find(entry => entry.id === item.id);
+          if (!block) return null;
+          return (
+            <div key={item.id} className={`dashboard-block-control ${item.visible ? '' : 'is-hidden'}`}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={item.visible}
+                  onChange={() => toggleDashboardBlock(item.id)}
+                />
+                <span aria-hidden="true">{block.icon}</span>
+                <strong>{block.label}</strong>
+              </label>
+              <div>
+                <button type="button" onClick={() => moveDashboardBlock(item.id, -1)} disabled={index === 0} aria-label={`Đưa ${block.label} lên trên`}>
+                  ↑
+                </button>
+                <button type="button" onClick={() => moveDashboardBlock(item.id, 1)} disabled={index === dashboardLayout.length - 1} aria-label={`Đưa ${block.label} xuống dưới`}>
+                  ↓
+                </button>
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
       </div>
     </div>
   );
@@ -1398,135 +1230,34 @@ export default function Dashboard() {
       {showCrisis && <CrisisPanel onDismiss={() => setShowCrisis(false)} />}
 
       <section className="today-grid">
-        <div className="card today-checkin-card">
-          <div className="section-heading-row">
-            <div>
-              <h3>Check-in nhanh</h3>
-              <p className="text-muted">Chọn cảm xúc hiện tại và ghi một dòng nếu bạn muốn.</p>
-            </div>
-            <Link to="/mood" className="quick-link">Ghi đầy đủ</Link>
-          </div>
-
-          <div className="quick-mood-row">
-            {visibleQuickMoods.map(m => (
-              <button
-                key={m.id}
-                className={`quick-mood-btn ${quickMood === m.id ? 'selected' : ''}`}
-                style={{ '--mood-color': m.color }}
-                aria-label={`Chọn cảm xúc ${m.label}`}
-                aria-pressed={quickMood === m.id}
-                onClick={() => handleQuickMoodSelect(m.id)}
-              >
-                <span aria-hidden="true">{m.emoji}</span>
-                <small>{m.label}</small>
-              </button>
-            ))}
-          </div>
-          {extraQuickMoods.length > 0 && (
-            <div className="quick-mood-more-row">
-              <button
-                type="button"
-                className={`quick-mood-more-btn ${quickMoodListExpanded ? 'active' : ''}`}
-                onClick={handleToggleQuickMoods}
-                aria-expanded={quickMoodListExpanded}
-              >
-                {quickMoodListExpanded ? 'Thu gọn cảm xúc' : `Xem thêm ${extraQuickMoods.length} cảm xúc`}
-              </button>
-            </div>
-          )}
-
-          <textarea
-            ref={quickNoteRef}
-            value={quickNote}
-            onChange={e => {
-              setQuickNote(e.target.value);
-              if (detectDanger(e.target.value)) setShowCrisis(true);
-            }}
-            rows={3}
-            placeholder="Điều gì đang ảnh hưởng tới bạn hôm nay?"
-            aria-label="Ghi chú cảm xúc nhanh"
-          />
-          <div className="quick-format-toolbar" aria-label="Định dạng ghi chú nhanh">
-            {QUICK_FORMAT_TOOLS.map(tool => (
-              <button
-                key={tool.id}
-                type="button"
-                className={`quick-format-btn ${tool.id}`}
-                onClick={() => applyQuickNoteFormat(tool)}
-                title={tool.title}
-                aria-label={tool.title}
-              >
-                {tool.label}
-              </button>
-            ))}
-          </div>
-          {quickNote.trim() && (
-            <div className="quick-note-preview">
-              <span>Xem trước ghi chú</span>
-              <RichText text={quickNote} className="quick-note-preview-content" />
-            </div>
-          )}
-          <div className="quick-photo-field">
-            <input
-              ref={quickImageInputRef}
-              type="file"
-              accept="image/*,video/*,audio/*"
-              multiple
-              onChange={handleQuickImageSelect}
-              hidden
-            />
-            <button type="button" className="quick-photo-btn" onClick={() => quickImageInputRef.current?.click()}>
-              Thêm tệp
-            </button>
-            {quickImagePreviews.length > 0 && (
-              <div className="quick-photo-preview-grid">
-                {quickImagePreviews.map((preview, index) => (
-                  <div key={preview.id} className="quick-photo-preview">
-                    {preview.file?.type.startsWith('video/') ? (
-                      <video src={preview.url} muted preload="metadata" />
-                    ) : preview.file?.type.startsWith('audio/') ? (
-                      <div className="media-file-preview">
-                        <span title={preview.file.name}>{displayAttachmentName({ type: preview.file.type, kind: 'audio' }, { date: new Date() })}</span>
-                      </div>
-                    ) : (
-                      <img src={preview.url} alt={`Tệp check-in xem trước ${index + 1}`} />
-                    )}
-                    <button type="button" onClick={() => removeQuickImage(index)}>Bỏ tệp</button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {quickImageError && <p className="quick-photo-error" role="alert">{quickImageError}</p>}
-          </div>
-          <button className="btn btn-primary w-full" onClick={handleQuickCheckin} disabled={!quickMood || quickAnalyzing}>
-            {quickAnalyzing ? (quickSaveStatus || 'Đang phân tích...') : 'Lưu check-in hôm nay'}
-          </button>
-          {quickFeedback && <p className="quick-feedback" role="status">{quickFeedback}</p>}
-          {quickAiPreview && (
-            <div className="quick-ai-preview">
-              <div className="quick-ai-preview-header">
-                <span>✨ Phân tích AI nháp</span>
-                <strong>Chưa lưu</strong>
-              </div>
-              <p>{quickAiPreview.advice}</p>
-              {quickAiPreviewStatus && <small>{quickAiPreviewStatus}</small>}
-              <div className="quick-ai-preview-actions">
-                <button type="button" className="btn btn-primary" onClick={saveQuickAiPreview}>
-                  Lưu phân tích này
-                </button>
-                <button type="button" className="btn btn-secondary" onClick={hideQuickAiPreview}>
-                  Ẩn khỏi lịch sử
-                </button>
-                <button type="button" className="btn btn-secondary" onClick={regenerateQuickAiPreview} disabled={quickAnalyzing}>
-                  Tạo lại
-                </button>
-              </div>
-            </div>
-          )}
-          {!quickAiPreview && quickAiPreviewStatus && (
-            <p className="quick-ai-preview-status" role="status">{quickAiPreviewStatus}</p>
-          )}
-        </div>
+        <TodayCheckin
+          visibleQuickMoods={visibleQuickMoods}
+          quickMood={quickMood}
+          quickNote={quickNote}
+          quickMoodListExpanded={quickMoodListExpanded}
+          extraQuickMoods={extraQuickMoods}
+          quickAnalyzing={quickAnalyzing}
+          quickSaveStatus={quickSaveStatus}
+          quickFeedback={quickFeedback}
+          quickAiPreview={quickAiPreview}
+          quickAiPreviewStatus={quickAiPreviewStatus}
+          quickImagePreviews={quickImagePreviews}
+          quickImageError={quickImageError}
+          quickImageInputRef={quickImageInputRef}
+          quickNoteRef={quickNoteRef}
+          onMoodSelect={handleQuickMoodSelect}
+          onToggleQuickMoods={handleToggleQuickMoods}
+          onNoteChange={setQuickNote}
+          onApplyFormat={applyQuickNoteFormat}
+          onImageSelect={handleQuickImageSelect}
+          onRemoveImage={removeQuickImage}
+          onCheckin={handleQuickCheckin}
+          onSaveAiPreview={saveQuickAiPreview}
+          onHideAiPreview={hideQuickAiPreview}
+          onRegenerateAiPreview={regenerateQuickAiPreview}
+          onImageBtnClick={() => quickImageInputRef.current?.click()}
+          setShowCrisis={setShowCrisis}
+        />
 
         <aside className="card next-action-card">
           <span className="next-action-kicker">Việc nhỏ tiếp theo</span>
@@ -1540,47 +1271,6 @@ export default function Dashboard() {
           </div>
         </aside>
       </section>
-
-      {false && (
-      <section className="card dashboard-customizer">
-        <div className="section-heading-row">
-          <div>
-            <h3>Tùy biến Trang chủ</h3>
-            <p className="text-muted">Bật/tắt hoặc đổi thứ tự các khối bạn muốn thấy trước.</p>
-          </div>
-          <button type="button" className="quick-link dashboard-reset-btn" onClick={resetDashboardLayout}>
-            Đặt lại
-          </button>
-        </div>
-        <div className="dashboard-block-manager" aria-label="Tùy biến các khối trên Trang chủ">
-          {dashboardLayout.map((item, index) => {
-            const block = DASHBOARD_BLOCKS.find(entry => entry.id === item.id);
-            if (!block) return null;
-            return (
-              <div key={item.id} className={`dashboard-block-control ${item.visible ? '' : 'is-hidden'}`}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={item.visible}
-                    onChange={() => toggleDashboardBlock(item.id)}
-                  />
-                  <span aria-hidden="true">{block.icon}</span>
-                  <strong>{block.label}</strong>
-                </label>
-                <div>
-                  <button type="button" onClick={() => moveDashboardBlock(item.id, -1)} disabled={index === 0} aria-label={`Đưa ${block.label} lên trên`}>
-                    ↑
-                  </button>
-                  <button type="button" onClick={() => moveDashboardBlock(item.id, 1)} disabled={index === dashboardLayout.length - 1} aria-label={`Đưa ${block.label} xuống dưới`}>
-                    ↓
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-      )}
 
       <div className="dashboard-customize-row">
         <button
@@ -1630,352 +1320,6 @@ export default function Dashboard() {
         </section>
       )}
 
-      {false && (
-        <>
-      <section className="card week-overview-card">
-        <div className="section-heading-row">
-          <div>
-            <h3>Tuần này nhìn nhanh</h3>
-            <p className="text-muted">
-              {weekAverage
-                ? `Điểm mood trung bình ${weekAverage}/5${weekDirection > 0 ? ', đang đi lên.' : weekDirection < 0 ? ', đang giảm nhẹ.' : ', khá ổn định.'}`
-                : 'Chưa đủ dữ liệu để thấy xu hướng.'}
-            </p>
-          </div>
-          <Link to="/mood?tab=history" className="quick-link">Xem lịch sử</Link>
-        </div>
-
-        <div className="week-strip" aria-label="Cảm xúc 7 ngày qua">
-          {last7.map(day => (
-            <button
-              key={day.fullDate}
-              type="button"
-              className={`week-day ${day.hasData ? 'has-data' : ''}`}
-              style={{ '--mood-color': day.mood?.color || 'var(--border)' }}
-              disabled={!day.logs.length}
-              onClick={() => setSelectedDayDetail({ dayKey: day.key, logs: day.logs })}
-              aria-label={day.hasData
-                ? `Xem ${day.logs.length} ghi chú ngày ${day.fullDate}, cảm xúc mới nhất ${day.mood?.label}`
-                : `Ngày ${day.fullDate} chưa có ghi chú`}
-            >
-              <span className="week-label">{day.date}</span>
-              <span
-                className="week-dot"
-                style={{ '--mood-color': day.mood?.color || 'var(--border)' }}
-                title={day.hasData ? `${day.fullDate}: ${day.mood?.label}` : `${day.fullDate}: chưa ghi`}
-              >
-                {day.mood?.emoji || ''}
-              </span>
-              <small>{day.fullDate}</small>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="card recent-memories-card">
-        <div className="section-heading-row">
-          <div>
-            <h3>Tệp gần đây</h3>
-            <p className="text-muted">Bấm vào tệp để mở lại cảm xúc và ghi chú đi kèm.</p>
-          </div>
-          <Link to="/mood?tab=history" className="quick-link">Mở lịch sử</Link>
-        </div>
-
-        {recentPhotoLogs.length > 0 ? (
-          <div className="memory-photo-strip" aria-label="Tệp check-in gần đây">
-            {recentPhotoLogs.map(log => (
-              <button
-                key={log.photoId}
-                type="button"
-                className="memory-photo-tile"
-                onClick={() => setSelectedMemory(log)}
-                aria-label={`Mở ghi chú tệp ngày ${format(new Date(log.date), 'dd/MM/yyyy')} lúc ${format(new Date(log.date), 'HH:mm')}`}
-              >
-                {log.attachment?.kind === 'video' ? (
-                  <video src={log.imageUrl} muted preload="metadata" />
-                ) : log.attachment?.kind === 'audio' ? (
-                  <div className="memory-media-placeholder">Audio</div>
-                ) : (
-                  <img src={log.imageUrl} alt={`Tệp check-in ${log.mood?.label || 'không rõ'} lúc ${format(new Date(log.date), 'HH:mm')}`} />
-                )}
-                <span>{format(new Date(log.date), 'dd/MM')}{log.attachments.length > 1 ? ` · ${log.attachmentIndex + 1}/${log.attachments.length}` : ''}</span>
-                <strong>{log.mood?.emoji} {log.mood?.label || 'Không rõ'}</strong>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="memory-empty">
-            <span aria-hidden="true">🖼️</span>
-            <div>
-              <strong>Chưa có tệp check-in</strong>
-              <p>Lần tới khi ghi cảm xúc, thêm một ảnh, video hoặc ghi âm ngắn để MindBuddy lưu lại ngữ cảnh của ngày đó.</p>
-            </div>
-          </div>
-        )}
-      </section>
-
-        </>
-      )}
-
-      {false && (
-      <section className="quick-actions today-tools">
-        <div className="section-heading-row mb-3">
-          <div>
-            <h3>Công cụ cho hôm nay</h3>
-            <p className="text-muted">Các lối tắt bạn có thể dùng ngay trong ngày.</p>
-          </div>
-        </div>
-        <div className="actions-grid">
-          {[
-            { to: '/mood', icon: '💭', label: latestTodayMood ? 'Ghi thêm cảm xúc' : 'Ghi cảm xúc', color: '#a29bfe', primary: true },
-            { to: '/needs', icon: '🧭', label: 'Mình cần gì?', color: '#00cec9' },
-            { to: todayReviewPath, icon: '🪞', label: 'Nhìn lại ngày', color: '#00cec9' },
-            { to: '/timeline?view=positive', icon: '✨', label: 'Khoảnh khắc tốt', color: '#fdcb6e' },
-            { to: '/pomodoro', icon: '🍅', label: 'Tập trung', color: '#fd79a8' },
-            { to: '/garden', icon: '🌱', label: 'Chăm vườn', color: '#55efc4' },
-            { to: '/community', icon: '🌍', label: 'Góc chia sẻ', color: '#74b9ff' },
-            { to: '/sos', icon: '🆘', label: 'S.O.S', color: '#e17055' },
-          ].map(a => (
-            <Link key={a.to} to={a.to} className={`action-card ${a.primary ? 'primary-action' : ''}`} style={{ '--action-color': a.color }} aria-label={a.label}>
-              <span className="action-icon" aria-hidden="true">{a.icon}</span>
-              <span className="action-label">{a.label}</span>
-            </Link>
-          ))}
-        </div>
-      </section>
-      )}
-
-      {false && <WeeklyInsight />}
-
-      {false && (
-        <>
-      <div className="stats-grid">
-        <div className="stat-card progress-card">
-          <div className="stat-icon" aria-hidden="true">🔥</div>
-          <div className="stat-value">{streak}</div>
-          <div className="stat-label">Ngày liên tiếp</div>
-          <div className="mini-progress" role="progressbar" aria-valuemin="0" aria-valuemax="7" aria-valuenow={Math.min(streak, 7)} aria-label="Tiến trình streak">
-            <span style={{ width: `${streakProgress}%` }} />
-          </div>
-          <p className="progress-hint">{streak >= 7 ? 'Đã mở mốc 7 ngày liên tiếp' : `Còn ${7 - streak} ngày để đạt mốc 7 ngày`}</p>
-        </div>
-        <div className="stat-card progress-card">
-          <div className="stat-icon" aria-hidden="true">🍅</div>
-          <div className="stat-value">{pomodoroCount}</div>
-          <div className="stat-label">Pomodoro hoàn thành</div>
-          <div className="mini-progress" role="progressbar" aria-valuemin="0" aria-valuemax="10" aria-valuenow={Math.min(pomodoroCount, 10)} aria-label="Tiến trình huy hiệu Pomodoro">
-            <span style={{ width: `${pomodoroProgress}%` }} />
-          </div>
-          <p className="progress-hint">{nextPomodoro === 0 ? 'Đã đủ điều kiện huy hiệu tập trung' : `Còn ${nextPomodoro} lần Pomodoro để mở huy hiệu`}</p>
-        </div>
-        <div className="stat-card progress-card">
-          <div className="stat-icon" aria-hidden="true">{gardenEmoji}</div>
-          <div className="stat-value">{gardenLevel}%</div>
-          <div className="stat-label">Sức khỏe vườn</div>
-          <div className="mini-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={gardenLevel} aria-label="Sức khỏe vườn">
-            <span style={{ width: `${gardenProgress}%` }} />
-          </div>
-          <p className="progress-hint">{gardenLevel >= 100 ? 'Vườn đã đạt mức cao nhất' : `Còn ${gardenRemaining}% tới mốc ${nextGardenMilestone}%`}</p>
-        </div>
-        <div className="stat-card progress-card">
-          <div className="stat-icon" aria-hidden="true">🏅</div>
-          <div className="stat-value">{earnedBadges.length}</div>
-          <div className="stat-label">Huy hiệu đạt được</div>
-          <div className="mini-progress" role="progressbar" aria-valuemin="0" aria-valuemax={BADGES.length} aria-valuenow={earnedBadges.length} aria-label="Tiến trình huy hiệu">
-            <span style={{ width: `${badgeProgress}%` }} />
-          </div>
-          <p className="progress-hint">{earnedBadges.length >= BADGES.length ? 'Đã sưu tập toàn bộ huy hiệu' : `${earnedBadges.length}/${BADGES.length} huy hiệu đã mở`}</p>
-        </div>
-      </div>
-
-      <section className="card energy-map-card">
-        <div className="section-heading-row">
-          <div>
-            <h3>Bản đồ năng lượng trong ngày</h3>
-            <p className="text-muted">Trung bình 30 ngày gần nhất theo check-in và phản hồi Pomodoro.</p>
-          </div>
-          <Link to="/mood" className="quick-link">Thêm chỉ số</Link>
-        </div>
-
-        {energyMap.hasMetrics ? (
-          <div className="energy-map-layout">
-            <div className="energy-chart-wrap" aria-label="Biểu đồ stress, năng lượng và tập trung theo khung giờ">
-              <ResponsiveContainer width="100%" height={230}>
-                <BarChart data={energyMap.data} barSize={16}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148, 163, 184, 0.22)" />
-                  <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                  <YAxis domain={[0, 5]} ticks={[1, 2, 3, 4, 5]} width={24} tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    formatter={(value, name) => [`${value}/5`, name]}
-                    labelFormatter={(label) => {
-                      const bucket = energyMap.data.find(item => item.label === label);
-                      return bucket ? `${bucket.label} (${bucket.range})` : label;
-                    }}
-                  />
-                  <Bar dataKey="stress" name="Stress" fill="#ff7675" radius={[5, 5, 0, 0]} />
-                  <Bar dataKey="energy" name="Năng lượng" fill="#55efc4" radius={[5, 5, 0, 0]} />
-                  <Bar dataKey="focus" name="Tập trung" fill="#a29bfe" radius={[5, 5, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-              <div className="energy-legend" aria-label="Chú giải biểu đồ">
-                <span><i className="stress" />Stress</span>
-                <span><i className="energy" />Năng lượng</span>
-                <span><i className="focus" />Tập trung</span>
-              </div>
-            </div>
-
-            <div className="energy-insights">
-              {energyMap.bestFocus && (
-                <div className="energy-insight-item focus">
-                  <span>Tập trung tốt nhất</span>
-                  <strong>{energyMap.bestFocus.label}</strong>
-                  <p>
-                    Check-in {energyMap.bestFocus.focus || '-'}/5
-                    {energyMap.bestFocus.pomodoroFocus ? `, Pomodoro sau phiên ${energyMap.bestFocus.pomodoroFocus}/5` : ''}.
-                  </p>
-                </div>
-              )}
-              {energyMap.highestStress && (
-                <div className="energy-insight-item stress">
-                  <span>Dễ căng hơn</span>
-                  <strong>{energyMap.highestStress.label}</strong>
-                  <p>Stress trung bình {energyMap.highestStress.stress}/5 trong {energyMap.highestStress.checkins} check-in.</p>
-                </div>
-              )}
-              {energyMap.bestEnergy && (
-                <div className="energy-insight-item energy">
-                  <span>Nhiều năng lượng nhất</span>
-                  <strong>{energyMap.bestEnergy.label}</strong>
-                  <p>Năng lượng trung bình {energyMap.bestEnergy.energy}/5.</p>
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="energy-map-empty">
-            <span aria-hidden="true">⚡</span>
-            <div>
-              <strong>Chưa đủ dữ liệu chỉ số phụ</strong>
-              <p>Ghi thêm stress, năng lượng và tập trung trong vài check-in để MindBuddy vẽ nhịp trong ngày.</p>
-            </div>
-            <Link to="/mood" className="btn btn-primary">Ghi cảm xúc</Link>
-          </div>
-        )}
-      </section>
-
-      {false && (
-        <section className="card personal-patterns-card">
-        <div className="section-heading-row">
-          <div>
-            <h3>Pattern cá nhân</h3>
-            <p className="text-muted">MindBuddy nhắc lại những mẫu lặp nhỏ từ check-in, Pomodoro và chỉ số phụ.</p>
-          </div>
-          <Link to="/mood?tab=history" className="quick-link">Xem dữ liệu</Link>
-        </div>
-
-        {personalPatterns.length > 0 ? (
-          <div className="personal-pattern-grid">
-            {personalPatterns.map(pattern => (
-              <Link key={pattern.id} to={pattern.to} className="personal-pattern-item">
-                <span className="pattern-icon" aria-hidden="true">{pattern.icon}</span>
-                <div>
-                  <strong>{pattern.title}</strong>
-                  <p>{pattern.text}</p>
-                  <small>{pattern.evidence}</small>
-                </div>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <div className="personal-pattern-empty">
-            <span aria-hidden="true">🧩</span>
-            <div>
-              <strong>Chưa đủ dữ liệu để nhận ra pattern rõ ràng</strong>
-              <p>Ghi thêm nguyên nhân, stress/ngủ/focus và vài phiên Pomodoro để MindBuddy nhắc lại các mẫu lặp đáng chú ý.</p>
-            </div>
-            <Link to="/mood" className="btn btn-primary">Ghi thêm</Link>
-          </div>
-        )}
-        </section>
-      )}
-
-      <section className="dashboard-focus-grid secondary-dashboard-grid">
-        <div className="card mood-chart-card">
-          <h3 className="mb-3">Biểu đồ cảm xúc 7 ngày</h3>
-          {moodLogs.length > 0 ? (
-            <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={last7}>
-                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                <YAxis domain={[0, 5]} hide />
-                <Tooltip formatter={(v, name, props) => {
-                  if (!props.payload.hasData) return ['Chưa có dữ liệu', ''];
-                  const m = props.payload.mood || allMoods.find(m => m.score === v);
-                  return [m ? `${m.emoji} ${m.label}` : v, 'Cảm xúc'];
-                }} />
-                <Line
-                  type="monotone"
-                  dataKey="score"
-                  stroke="#6c63ff"
-                  strokeWidth={2.5}
-                  dot={(props) => {
-                    const { cx, cy, payload } = props;
-                    if (!payload.hasData) return null;
-                    return <circle key={`dot-${cx}-${cy}`} cx={cx} cy={cy} r={4} fill="#6c63ff" />;
-                  }}
-                  connectNulls={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="empty-state rich-empty">
-              <div className="empty-icon" aria-hidden="true">💭</div>
-              <h4>Chưa có dữ liệu cảm xúc</h4>
-              <p>Ghi cảm xúc đầu tiên để biểu đồ bắt đầu có ý nghĩa.</p>
-              <Link to="/mood" className="btn btn-primary">Ghi cảm xúc đầu tiên</Link>
-            </div>
-          )}
-        </div>
-
-        <div className="card goal-widget">
-          <div className="section-heading-row">
-            <div>
-              <h3>Mục tiêu cá nhân</h3>
-              <p className="text-muted">MindBuddy sẽ ưu tiên insight và lời khuyên theo mục tiêu này.</p>
-            </div>
-          </div>
-          <div className="goal-options">
-            {activeGoals.map(goal => (
-              <button
-                key={goal.id}
-                className={`goal-option ${userGoal === goal.id ? 'active' : ''}`}
-                onClick={() => setUserGoal(goal.id)}
-                aria-pressed={userGoal === goal.id}
-              >
-                <strong>{goal.label}</strong>
-                <span>{goal.desc}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <div className="card">
-        <h3 className="mb-3">Huy hiệu của bạn</h3>
-        <div className="badges-grid">
-          {BADGES.map(b => (
-            <div key={b.id} className={`badge-item ${earnedBadges.includes(b.id) ? 'earned' : 'locked'}`}>
-              <span className="badge-icon">{earnedBadges.includes(b.id) ? b.icon : '🔒'}</span>
-              <span className="badge-name">{b.name}</span>
-              <span className="badge-desc">{b.desc}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <NotificationSettings />
-        </>
-      )}
-
       {selectedDayDetail && (
         <div className="dashboard-modal-overlay" onClick={e => e.target === e.currentTarget && setSelectedDayDetail(null)}>
           <div className="dashboard-day-modal">
@@ -1986,7 +1330,7 @@ export default function Dashboard() {
             <div className="dashboard-day-list">
               {selectedDayDetail.logs.map(log => {
                 const mood = allMoods.find(m => m.id === log.mood);
-                const cleanNote = log.note?.replace(/\s*\[.+\]$/, '') || '';
+                const cleaned = log.note?.replace(/\s*\[.+\]$/, '') || '';
                 const causeTags = log.note?.match(/\[(.+)\]/)?.[1]?.split(', ') || [];
                 const attachments = normalizeMoodAttachments(log);
                 return (
@@ -2006,7 +1350,7 @@ export default function Dashboard() {
                       date={log.date}
                       compact
                     />
-                    <RichText text={cleanNote} fallback="Không có ghi chú thêm." className="dashboard-note-text" />
+                    <RichText text={cleaned} fallback="Không có ghi chú thêm." className="dashboard-note-text" />
                   </div>
                 );
               })}

@@ -1,7 +1,15 @@
-import { getAuth } from 'firebase/auth';
+import { enqueueRequest, getFreshAuthHeaders } from './offlineQueue';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 const AI_TIMEOUT_MS = 70000;
+
+function isOffline() {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
+function isNetworkFailure(err) {
+  return isOffline() || err instanceof TypeError;
+}
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = AI_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -27,18 +35,32 @@ function goalText(userGoal) {
   return GOAL_LABELS[userGoal] || userGoal || '';
 }
 
-async function getAuthHeaders() {
-  const headers = { 'Content-Type': 'application/json' };
-  try {
-    const user = getAuth().currentUser;
-    if (user) {
-      const token = await user.getIdToken();
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-  } catch (err) {
-    console.warn('Failed to get auth token:', err.message);
+async function postAIWithOfflineQueue(endpoint, payload, extractContent, label) {
+  const url = `${API_BASE}${endpoint}`;
+  const body = JSON.stringify(payload);
+
+  if (isOffline()) {
+    await enqueueRequest(url, { method: 'POST', body });
+    return null;
   }
-  return headers;
+
+  try {
+    const res = await fetchWithTimeout(url, {
+      method: 'POST',
+      headers: await getFreshAuthHeaders(),
+      body,
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return extractContent(data);
+  } catch (err) {
+    if (isNetworkFailure(err)) {
+      await enqueueRequest(url, { method: 'POST', body });
+    } else {
+      console.error(`${label} error:`, err);
+    }
+    return null;
+  }
 }
 
 function formatMetrics(metrics) {
@@ -75,20 +97,13 @@ export function detectDanger(text) {
  * aiMemory: [{ date, summary, moods }] — lịch sử các ngày trước
  */
 export async function analyzeMood({ moodLabel, note, causes, metrics, recentMoods, aiMemory, userGoal }) {
-  try {
-    const goal = goalText(userGoal);
-    const res = await fetchWithTimeout(`${API_BASE}/ai/analyze`, {
-      method: 'POST',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({ moodLabel, note, causes, metrics, recentMoods, aiMemory, userGoal: goal }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.content || null;
-  } catch (err) {
-    console.error('analyzeMood error:', err);
-    return null;
-  }
+  const goal = goalText(userGoal);
+  return postAIWithOfflineQueue(
+    '/ai/analyze',
+    { moodLabel, note, causes, metrics, recentMoods, aiMemory, userGoal: goal },
+    (data) => data.content || null,
+    'analyzeMood'
+  );
 }
 
 /**
@@ -107,11 +122,14 @@ export function createChat(initialAdvice, moodContext, existingMessages = [], ai
   ];
 
   return async (message) => {
+    if (isOffline()) {
+      throw new Error('Không có kết nối mạng. Vui lòng thử lại khi online.');
+    }
     history.push({ role: 'user', content: message });
     try {
       const res = await fetchWithTimeout(`${API_BASE}/ai/chat`, {
         method: 'POST',
-        headers: await getAuthHeaders(),
+        headers: await getFreshAuthHeaders(),
         body: JSON.stringify({ messages: history, aiMemory, userGoal: goal }),
       });
       if (!res.ok) throw new Error('Server error');
@@ -138,11 +156,14 @@ export async function counselMindBuddy({
   journalContext = [],
   userGoal = '',
 }) {
+  if (isOffline()) {
+    throw new Error('Không có kết nối mạng. Vui lòng thử lại khi online.');
+  }
   try {
     const goal = goalText(userGoal);
     const res = await fetchWithTimeout(`${API_BASE}/ai/counsel`, {
       method: 'POST',
-      headers: await getAuthHeaders(),
+      headers: await getFreshAuthHeaders(),
       body: JSON.stringify({
         mode,
         distressLevel,
@@ -171,19 +192,12 @@ export async function counselMindBuddy({
  */
 export async function summarizeDay({ date, entries }) {
   if (!entries || entries.length === 0) return null;
-  try {
-    const res = await fetchWithTimeout(`${API_BASE}/ai/summarize`, {
-      method: 'POST',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({ date, entries }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.summary || null;
-  } catch (err) {
-    console.error('summarizeDay error:', err);
-    return null;
-  }
+  return postAIWithOfflineQueue(
+    '/ai/summarize',
+    { date, entries },
+    (data) => data.summary || null,
+    'summarizeDay'
+  );
 }
 
 /**
@@ -193,26 +207,20 @@ export async function summarizeDay({ date, entries }) {
  */
 export async function reviewDay({ date, entries, pomodoros, userGoal }) {
   if ((!entries || entries.length === 0) && (!pomodoros || pomodoros.length === 0)) return null;
-  try {
-    const goal = goalText(userGoal);
-    const res = await fetchWithTimeout(`${API_BASE}/ai/daily-review`, {
-      method: 'POST',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({ date, entries, pomodoros, userGoal: goal }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.review || null;
-  } catch (err) {
-    console.error('reviewDay error:', err);
-    return null;
-  }
+  const goal = goalText(userGoal);
+  return postAIWithOfflineQueue(
+    '/ai/daily-review',
+    { date, entries, pomodoros, userGoal: goal },
+    (data) => data.review || null,
+    'reviewDay'
+  );
 }
 
 /**
  * Phân tích xu hướng tuần.
  */
 export async function analyzeWeeklyTrend(moodLogs, MOODS, userGoal) {
+  if (isOffline()) return null;
   const aiVisibleLogs = moodLogs.filter(log => !log.excludeFromAI);
   if (aiVisibleLogs.length < 3) return null;
 
@@ -234,7 +242,7 @@ export async function analyzeWeeklyTrend(moodLogs, MOODS, userGoal) {
     const goal = goalText(userGoal);
     const res = await fetchWithTimeout(`${API_BASE}/ai/weekly`, {
       method: 'POST',
-      headers: await getAuthHeaders(),
+      headers: await getFreshAuthHeaders(),
       body: JSON.stringify({ moodSummary: recent, userGoal: goal }),
     });
     if (!res.ok) return null;

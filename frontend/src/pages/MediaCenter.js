@@ -253,7 +253,7 @@ export default function MediaCenter() {
                   >
                     <div className="media-preview">
                       {item.attachment.kind === 'image' && (
-                        <img src={item.attachment.url} alt={displayAttachmentName(item.attachment, { date: item.date, index: item.attachmentIndex, total: item.attachments.length })} loading="lazy" />
+                        <img src={item.attachment.url} alt={displayAttachmentName(item.attachment, { date: item.date, index: item.attachmentIndex, total: item.attachments.length })} loading="lazy" decoding="async" />
                       )}
                       {item.attachment.kind === 'video' && (
                         <video src={item.attachment.url} muted preload="metadata" />
@@ -304,7 +304,7 @@ export default function MediaCenter() {
             <div className="media-modal-body">
               <div className="media-modal-viewer">
                 {selectedItem.attachment.kind === 'image' && (
-                  <img src={selectedItem.attachment.url} alt={displayAttachmentName(selectedItem.attachment, { date: selectedItem.date, index: selectedItem.attachmentIndex, total: selectedItem.attachments.length })} />
+                  <img src={selectedItem.attachment.url} alt={displayAttachmentName(selectedItem.attachment, { date: selectedItem.date, index: selectedItem.attachmentIndex, total: selectedItem.attachments.length })} loading="lazy" decoding="async" />
                 )}
                 {selectedItem.attachment.kind === 'video' && (
                   <video src={selectedItem.attachment.url} controls preload="metadata" />

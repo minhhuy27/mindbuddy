@@ -55,6 +55,32 @@ const DEFAULT_DATA = {
 const USER_CACHE_PREFIX = 'mb_user_cache_';
 const MAX_FIRESTORE_BACKUPS = 10;
 const BACKUP_COLLECTION = 'userBackups';
+const OFFLINE_READ_TIMEOUT_MS = 5000;
+
+function isOffline() {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
+function getDocWithOfflineTimeout(ref, timeoutMs = OFFLINE_READ_TIMEOUT_MS) {
+  if (!isOffline()) {
+    return getDoc(ref);
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Offline Firestore read timed out'));
+    }, timeoutMs);
+    getDoc(ref).then(
+      (snap) => {
+        clearTimeout(timer);
+        resolve(snap);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
 
 function localDateKey(date = new Date()) {
   const year = date.getFullYear();
@@ -367,17 +393,70 @@ export function AppProvider({ children }) {
 
   const userRef = (uid) => doc(db, 'users', uid);
 
+  const persistUserDoc = async (uid, updates, { method = 'setDoc' } = {}) => {
+    const ref = userRef(uid);
+    const writePromise = method === 'updateDoc'
+      ? updateDoc(ref, updates)
+      : setDoc(ref, updates, { merge: true });
+
+    if (isOffline()) {
+      // With IndexedDB persistence enabled, write promises resolve only after server ack
+      writePromise
+        .then(() => {
+          if (!isOffline()) setSyncNotice(null);
+        })
+        .catch((err) => {
+          console.warn('Lưu offline thất bại:', err.message);
+          setSyncNotice({
+            type: 'warning',
+            message: 'Thay đổi đã được giữ tạm trên máy này nhưng chưa đồng bộ được lên Firestore.',
+            detail: err.message,
+          });
+        });
+      setSyncNotice({
+        type: 'info',
+        message: 'Đang offline — thay đổi đã lưu tạm và sẽ tự đồng bộ khi có mạng.',
+      });
+      return;
+    }
+
+    try {
+      await writePromise;
+      setSyncNotice(null);
+    } catch (err) {
+      console.warn('Lưu thất bại:', err.message);
+      setSyncNotice({
+        type: 'warning',
+        message: 'Thay đổi đã được giữ tạm trên máy này nhưng chưa đồng bộ được lên Firestore.',
+        detail: err.message,
+      });
+    }
+  };
+
   const loadUserData = async (uid) => {
     try {
-      const snap = await getDoc(userRef(uid));
+      const snap = await getDocWithOfflineTimeout(userRef(uid));
       if (snap.exists()) {
         const nextData = mergeUserData(snap.data());
+        dataRef.current = nextData;
         setData(nextData);
         setDataReady(true);
         writeUserCache(uid, nextData);
+      } else if (isOffline()) {
+        const cached = readUserCache(uid);
+        const nextData = cached?.data ? mergeUserData(cached.data) : mergeUserData(DEFAULT_DATA);
+        dataRef.current = nextData;
+        setData(nextData);
+        setDataReady(true);
+        writeUserCache(uid, nextData);
+        setSyncNotice({
+          type: 'info',
+          message: 'Đang offline — dữ liệu đang dùng bản tạm trên máy và sẽ tự đồng bộ khi có mạng.',
+        });
       } else {
         const nextData = mergeUserData(DEFAULT_DATA);
         await setDoc(userRef(uid), nextData);
+        dataRef.current = nextData;
         setData(nextData);
         setDataReady(true);
         writeUserCache(uid, nextData);
@@ -386,19 +465,26 @@ export function AppProvider({ children }) {
       console.warn('Firestore load failed:', err.message);
       const cached = readUserCache(uid);
       if (cached?.data) {
-        setData(mergeUserData(cached.data));
+        const nextData = mergeUserData(cached.data);
+        dataRef.current = nextData;
+        setData(nextData);
         setDataReady(true);
         setSyncNotice({
-          type: 'warning',
-          message: 'Không tải được Firestore, MindBuddy đang dùng bản cache cục bộ gần nhất.',
+          type: isOffline() ? 'info' : 'warning',
+          message: isOffline()
+            ? 'Đang offline — MindBuddy đang dùng bản cache cục bộ gần nhất và sẽ đồng bộ khi có mạng.'
+            : 'Không tải được Firestore, MindBuddy đang dùng bản cache cục bộ gần nhất.',
           detail: err.message,
         });
       } else {
+        dataRef.current = DEFAULT_DATA;
         setData(DEFAULT_DATA);
         setDataReady(true);
         setSyncNotice({
-          type: 'error',
-          message: 'Không tải được dữ liệu Firestore và chưa có cache cục bộ trên máy này.',
+          type: isOffline() ? 'warning' : 'error',
+          message: isOffline()
+            ? 'Đang offline và chưa có dữ liệu cache cục bộ — thay đổi mới sẽ tự đồng bộ khi có mạng.'
+            : 'Không tải được dữ liệu Firestore và chưa có cache cục bộ trên máy này.',
           detail: err.message,
         });
       }
@@ -409,18 +495,7 @@ export function AppProvider({ children }) {
     const nextData = { ...dataRef.current, ...updates };
     commitData(nextData);
     if (user) {
-      try {
-        await setDoc(userRef(user.uid), updates, { merge: true });
-        setSyncNotice(null);
-      }
-      catch (err) {
-        console.warn('Lưu thất bại:', err.message);
-        setSyncNotice({
-          type: 'warning',
-          message: 'Thay đổi đã được giữ tạm trên máy này nhưng chưa đồng bộ được lên Firestore.',
-          detail: err.message,
-        });
-      }
+      await persistUserDoc(user.uid, updates);
     }
   };
 
@@ -522,14 +597,14 @@ export function AppProvider({ children }) {
     if (current.earnedBadges.includes(id)) return;
     const next = [...current.earnedBadges, id];
     commitData({ ...current, earnedBadges: next });
-    if (user) await updateDoc(userRef(user.uid), { earnedBadges: arrayUnion(id) });
+    if (user) await persistUserDoc(user.uid, { earnedBadges: arrayUnion(id) }, { method: 'updateDoc' });
   };
 
   const growGarden = async (points) => {
     const current = dataRef.current;
     const next = Math.min(current.gardenLevel + points, 100);
     commitData({ ...current, gardenLevel: next });
-    if (user) await updateDoc(userRef(user.uid), { gardenLevel: next });
+    if (user) await persistUserDoc(user.uid, { gardenLevel: next }, { method: 'updateDoc' });
   };
 
   const formatImageFields = (imageInput) => {
@@ -570,7 +645,7 @@ export function AppProvider({ children }) {
     };
     const next = [log, ...currentData.moodLogs];
     commitData({ ...currentData, moodLogs: next });
-    if (user) await setDoc(userRef(user.uid), { moodLogs: next }, { merge: true });
+    if (user) await persistUserDoc(user.uid, { moodLogs: next });
     // Chỉ cộng điểm vườn cho lần đầu ghi trong ngày
     const todayStr = new Date().toDateString();
     const alreadyToday = currentData.moodLogs.some(l => new Date(l.date).toDateString() === todayStr);
@@ -599,7 +674,7 @@ export function AppProvider({ children }) {
       return { ...base, ...formatImageFields(nextAttachments) };
     });
     commitData({ ...currentData, moodLogs: next });
-    if (user) await setDoc(userRef(user.uid), { moodLogs: next }, { merge: true });
+    if (user) await persistUserDoc(user.uid, { moodLogs: next });
     if (images === undefined) return;
     const nextPaths = new Set(nextAttachments.map(attachment => attachment.path).filter(Boolean));
     currentAttachments.forEach(attachment => {
@@ -613,7 +688,7 @@ export function AppProvider({ children }) {
     const current = currentData.moodLogs.find(l => l.id === id);
     const next = currentData.moodLogs.filter(l => l.id !== id);
     commitData({ ...currentData, moodLogs: next });
-    if (user) await setDoc(userRef(user.uid), { moodLogs: next }, { merge: true });
+    if (user) await persistUserDoc(user.uid, { moodLogs: next });
     normalizeMoodAttachments(current).forEach(attachment => {
       if (attachment.path) deleteMoodImage(attachment.path);
     });
@@ -625,7 +700,7 @@ export function AppProvider({ children }) {
       log.id === id ? { ...log, pinned: !log.pinned, pinnedAt: !log.pinned ? new Date().toISOString() : null } : log
     ));
     commitData({ ...currentData, moodLogs: next });
-    if (user) await setDoc(userRef(user.uid), { moodLogs: next }, { merge: true });
+    if (user) await persistUserDoc(user.uid, { moodLogs: next });
   };
 
   // Giữ lại updateTodayMood để tương thích
@@ -638,7 +713,7 @@ export function AppProvider({ children }) {
   const incrementPomodoro = async () => {
     const next = data.pomodoroCount + 1;
     setData(prev => ({ ...prev, pomodoroCount: next }));
-    if (user) await updateDoc(userRef(user.uid), { pomodoroCount: increment(1) });
+    if (user) await persistUserDoc(user.uid, { pomodoroCount: increment(1) }, { method: 'updateDoc' });
     growGarden(10);
     if (next >= 10) checkBadge('pomodoro_master');
   };
@@ -646,7 +721,7 @@ export function AppProvider({ children }) {
   const incrementMeditate = async () => {
     const next = (data.meditateCount || 0) + 1;
     setData(prev => ({ ...prev, meditateCount: next }));
-    if (user) await updateDoc(userRef(user.uid), { meditateCount: increment(1) });
+    if (user) await persistUserDoc(user.uid, { meditateCount: increment(1) }, { method: 'updateDoc' });
     if (next >= 5) checkBadge('meditation_master');
   };
 
@@ -654,13 +729,13 @@ export function AppProvider({ children }) {
     const c = { id: Date.now(), text, hugs: 0, time: 'Vừa xong', x: Math.random() * 70 + 10, y: Math.random() * 70 + 10 };
     const next = [c, ...data.confessions];
     setData(prev => ({ ...prev, confessions: next }));
-    if (user) await updateDoc(userRef(user.uid), { confessions: next });
+    if (user) await persistUserDoc(user.uid, { confessions: next }, { method: 'updateDoc' });
   };
 
   const hugConfession = async (id) => {
     const next = data.confessions.map(c => c.id === id ? { ...c, hugs: c.hugs + 1 } : c);
     setData(prev => ({ ...prev, confessions: next }));
-    if (user) await updateDoc(userRef(user.uid), { confessions: next });
+    if (user) await persistUserDoc(user.uid, { confessions: next }, { method: 'updateDoc' });
     checkBadge('community_helper');
   };
 
@@ -670,14 +745,14 @@ export function AppProvider({ children }) {
     const newMood = { ...mood, id: `custom_${Date.now()}` };
     const next = [...(data.customMoods || []), newMood];
     setData(prev => ({ ...prev, customMoods: next }));
-    if (user) await updateDoc(userRef(user.uid), { customMoods: next });
+    if (user) await persistUserDoc(user.uid, { customMoods: next }, { method: 'updateDoc' });
     return newMood;
   };
 
   const deleteCustomMood = async (id) => {
     const next = (data.customMoods || []).filter(m => m.id !== id);
     setData(prev => ({ ...prev, customMoods: next }));
-    if (user) await updateDoc(userRef(user.uid), { customMoods: next });
+    if (user) await persistUserDoc(user.uid, { customMoods: next }, { method: 'updateDoc' });
   };
 
   const saveCauseOptions = async (next) => {

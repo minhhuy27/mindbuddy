@@ -14,7 +14,7 @@ export default function MediaAttachments({ attachments, label = 'Tệp check-in'
         const displayName = displayAttachmentName(item, { date, index, total: items.length });
         if (item.kind === 'image') {
           const imageIndex = imageItems.findIndex(image => image.url === item.url);
-          const content = <img src={item.url} alt={itemLabel} />;
+          const content = <img src={item.url} alt={itemLabel} loading="lazy" decoding="async" />;
           return onOpenImage ? (
             <button
               key={`${item.url}-${index}`}

@@ -5,6 +5,8 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import LoadingSkeleton from './components/LoadingSkeleton';
 import InstallBanner from './components/InstallBanner';
+import OfflineBanner from './components/OfflineBanner';
+import UpdateToast from './components/UpdateToast';
 import './App.css';
 
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
@@ -101,6 +103,8 @@ function AppRoutes() {
 export default function App() {
   return (
     <AppProvider>
+      <OfflineBanner />
+      <UpdateToast />
       <BrowserRouter>
         <AppRoutes />
       </BrowserRouter>

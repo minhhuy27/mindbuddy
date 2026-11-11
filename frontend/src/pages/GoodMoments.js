@@ -185,7 +185,7 @@ export default function GoodMoments() {
                   </button>
                 </div>
                 {topMoment.coverAttachment?.kind === 'image' ? (
-                  <img src={topMoment.imageUrl} alt={`Tệp khoảnh khắc ${topMoment.mood?.label || 'không rõ'}`} />
+                  <img src={topMoment.imageUrl} alt={`Tệp khoảnh khắc ${topMoment.mood?.label || 'không rõ'}`} loading="lazy" decoding="async" />
                 ) : topMoment.coverAttachment?.kind === 'video' ? (
                   <video src={topMoment.imageUrl} muted preload="metadata" />
                 ) : topMoment.coverAttachment?.kind === 'audio' ? (
@@ -254,7 +254,7 @@ export default function GoodMoments() {
                         ) : moment.coverAttachment?.kind === 'audio' ? (
                           <div className="good-thumb-placeholder">Audio</div>
                         ) : (
-                          <img src={moment.imageUrl} alt={`Tệp khoảnh khắc lúc ${format(new Date(moment.date), 'HH:mm')}`} />
+                          <img src={moment.imageUrl} alt={`Tệp khoảnh khắc lúc ${format(new Date(moment.date), 'HH:mm')}`} loading="lazy" decoding="async" />
                         )}
                         {moment.attachments.length > 1 && <span>{moment.attachments.length} tệp</span>}
                       </div>

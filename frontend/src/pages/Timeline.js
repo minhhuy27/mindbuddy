@@ -303,7 +303,7 @@ function MediaStrip({ attachments, date }) {
           className={`timeline-media-item ${attachment.kind}`}
           title={attachment.name || displayAttachmentName(attachment, { date, index, total: attachments.length })}
         >
-          {attachment.kind === 'image' && <img src={attachment.url} alt={displayAttachmentName(attachment, { date, index, total: attachments.length })} loading="lazy" />}
+          {attachment.kind === 'image' && <img src={attachment.url} alt={displayAttachmentName(attachment, { date, index, total: attachments.length })} loading="lazy" decoding="async" />}
           {attachment.kind === 'video' && <video src={attachment.url} muted preload="metadata" />}
           {attachment.kind === 'audio' && <div><span>🎧</span><strong>{displayAttachmentName(attachment, { date, index, total: attachments.length })}</strong></div>}
           {attachment.kind === 'file' && <div><span>📎</span><strong>{attachment.name || 'Tệp đính kèm'}</strong></div>}
